@@ -4,6 +4,7 @@
 
 static void sFillAudioBufferCallback(void* userdata, Uint8* stream, int len);
 static int sActualSampleFormat = AUDIO_S16MSB;
+static int sSDLBufferGo = 0;
 
 int lsg_sdl_start() {
     lsg_initialize();
@@ -37,6 +38,10 @@ int lsg_sdl_start() {
 }
 
 void sFillAudioBufferCallback(void* userdata, Uint8* stream, int len) {
+    if (!sSDLBufferGo) {
+        return;
+    }
+
     // ***WARNING*** Here is NOT main thread.
     const int nSamples = len / 4;
 
@@ -45,4 +50,8 @@ void sFillAudioBufferCallback(void* userdata, Uint8* stream, int len) {
     } else {
         lsg_synthesize_LE16(stream, nSamples, 4, 1);
     }
+}
+
+void lsg_sdl_set_running(int b) {
+    sSDLBufferGo = b;
 }
