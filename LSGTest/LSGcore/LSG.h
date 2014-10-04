@@ -161,6 +161,7 @@ typedef struct _MLFPlaySetup_t {
 // Public APIs
 LSGStatus lsg_initialize();
 LSGStatus lsg_synthesize_BE16(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo);
+LSGStatus lsg_synthesize_LE16(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo);
 LSGStatus lsg_set_channel_frequency(int channelIndex, float fq);
 LSGStatus lsg_set_channel_global_detune(int channelIndex, float d);
 LSGStatus lsg_set_channel_global_volume(int channelIndex, int v);

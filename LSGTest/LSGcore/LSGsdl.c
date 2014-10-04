@@ -3,6 +3,7 @@
 #define LSGSDL_VERBOSE 1
 
 static void sFillAudioBufferCallback(void* userdata, Uint8* stream, int len);
+static int sActualSampleFormat = AUDIO_S16MSB;
 
 int lsg_sdl_start() {
     lsg_initialize();
@@ -21,6 +22,7 @@ int lsg_sdl_start() {
         return sdlrv;
     }
     
+    sActualSampleFormat = actualSpec.format;
     if (desired.format != actualSpec.format) {
         fputs("*** Warning! buffer format changed ***\n", stderr);
     }
@@ -38,5 +40,9 @@ void sFillAudioBufferCallback(void* userdata, Uint8* stream, int len) {
     // ***WARNING*** Here is NOT main thread.
     const int nSamples = len / 4;
 
-    lsg_synthesize_BE16(stream, nSamples, 4, 1);
+    if (sActualSampleFormat == AUDIO_S16MSB) {
+        lsg_synthesize_BE16(stream, nSamples, 4, 1);
+    } else {
+        lsg_synthesize_LE16(stream, nSamples, 4, 1);
+    }
 }

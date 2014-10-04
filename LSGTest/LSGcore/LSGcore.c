@@ -414,10 +414,13 @@ LSGStatus lsg_fill_generator_buffer(LSGSample* buf, size_t len, LSGSample val) {
 }
 
 // ==== OUTPUT API ====
-LSGStatus lsg_synthesize_BE16(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo) {
+static LSG_INLINE LSGStatus lsg_synthesize_internal(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo, int bLE) {
     const float baseFQ = (float)kLSGOutSamplingRate / (float)kLSGNumGeneratorSamples;
     int writePos = 0;
     int ci;
+    
+    const int Hi = bLE ? 1 : 0;
+    const int Lo = bLE ? 0 : 1;
 
     // Fill (if reserved)
     for (ci = 0;ci < kLSGNumOutChannels;++ci) {
@@ -450,11 +453,11 @@ fprintf(stderr, "Ch: %2d   CMD: %x   t:%8lld\n", ci, cmd, sGlobalTick);
         else if (val < -32767) { val = -32767; }
         
         // Write   - - - - - - - - - - - - - - -
-        pOut[writePos  ] = (val & 0xff00) >> 8;
-        pOut[writePos+1] =  val & 0xff;
+        pOut[writePos+Hi] = (val & 0xff00) >> 8;
+        pOut[writePos+Lo] =  val & 0xff;
         if (bStereo) {
-            pOut[writePos+2] = (val & 0xff00) >> 8;
-            pOut[writePos+3] =  val & 0xff;
+            pOut[writePos+2+Hi] = (val & 0xff00) >> 8;
+            pOut[writePos+2+Lo] =  val & 0xff;
         }
         
         writePos += strideBytes;
@@ -463,6 +466,14 @@ fprintf(stderr, "Ch: %2d   CMD: %x   t:%8lld\n", ci, cmd, sGlobalTick);
     }
     
     return LSG_OK;
+}
+
+LSGStatus lsg_synthesize_BE16(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo) {
+    return lsg_synthesize_internal(pOut, nSamples, strideBytes, bStereo, 0);
+}
+
+LSGStatus lsg_synthesize_LE16(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo) {
+    return lsg_synthesize_internal(pOut, nSamples, strideBytes, bStereo, 1);
 }
 
 LSGStatus lsg_fill_reserved_commands(int64_t startTick, LSGChannel_t* ch) {
