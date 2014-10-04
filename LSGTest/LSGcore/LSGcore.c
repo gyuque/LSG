@@ -1,4 +1,5 @@
 #include <stdio.h>
+#define _USE_MATH_DEFINES
 #include <math.h>
 #include "LSG.h"
 #define generator_index_in_range(x) ((x) >= 0 && (x) < kLSGNumGenerators)
@@ -335,7 +336,7 @@ LSGStatus lsg_advance_channel_state(LSGChannel_t* ch) {
     return LSG_OK;
 }
 
-static inline int lsg_channel_noise_next(LSGChannel_t* ch) {
+static LSG_INLINE int lsg_channel_noise_next(LSGChannel_t* ch) {
     if (((ch->noiseRegister & kBinNoiseTap1) != 0) != ((ch->noiseRegister & kBinNoiseTap2) != 0)) {
         ch->noiseRegister = (ch->noiseRegister >> 1) | kBinNoiseFeedback;
     } else {

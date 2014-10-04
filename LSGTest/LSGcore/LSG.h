@@ -6,6 +6,12 @@
 #define LSGTest_LSG_h
 #include <stdint.h>
 
+#ifdef _MSC_VER
+#define LSG_INLINE __inline
+#else
+#define LSG_INLINE inline
+#endif
+
 typedef short LSGSample;
 typedef int LSGStatus;
 
