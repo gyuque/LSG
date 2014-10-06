@@ -60,7 +60,9 @@ int main(int argc, char * argv[])
     lsg_put_channel_command_and_clear_later(ch, 88, testcmd3);
 */
     
+    // Notify sound thread we're ready.
     lsg_sdl_set_running(1);
+    
     getchar();
     SDL_Quit();
     destroyReserveBuffers();

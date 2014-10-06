@@ -4,7 +4,7 @@
 
 static void sFillAudioBufferCallback(void* userdata, Uint8* stream, int len);
 static int sActualSampleFormat = AUDIO_S16MSB;
-static int sSDLBufferGo = 0;
+static char sSDLBufferGo = 0;
 
 int lsg_sdl_start() {
     lsg_initialize();
@@ -25,7 +25,7 @@ int lsg_sdl_start() {
     
     sActualSampleFormat = actualSpec.format;
     if (desired.format != actualSpec.format) {
-        fputs("*** Warning! buffer format changed ***\n", stderr);
+        fputs("[ Buffer format changed ]\n", stderr);
     }
     
 #if LSGSDL_VERBOSE
@@ -52,6 +52,6 @@ void sFillAudioBufferCallback(void* userdata, Uint8* stream, int len) {
     }
 }
 
-void lsg_sdl_set_running(int b) {
+void lsg_sdl_set_running(char b) {
     sSDLBufferGo = b;
 }

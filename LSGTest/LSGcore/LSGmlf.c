@@ -492,13 +492,23 @@ static int event_sorter_proc(const void *a, const void *b) {
 }
 
 static void correct_0delta_noteon(MLFEvent_t* ls, int len) {
+    MLFEvent_t* prevNoteEv = NULL;
     for (int i = 0;i < (len-1);++i) {
-        const MLFEventType t1 = ls[i  ].type;
-        const MLFEventType t2 = ls[i+1].type;
-        if (t1 == ME_NoteOff && t2 == ME_NoteOn) {
-            if (ls[i].absoluteTicks == ls[i+1].absoluteTicks) {
-                ls[i].absoluteTicks -= 2;
+        MLFEvent_t* ev = &ls[i];
+        
+        if (prevNoteEv && ev) {
+            const MLFEventType t1 = prevNoteEv->type;
+            const MLFEventType t2 = ev->type;
+
+            if (t1 == ME_NoteOff && t2 == ME_NoteOn) {
+                if (prevNoteEv->absoluteTicks == ev->absoluteTicks) {
+                    prevNoteEv->absoluteTicks -= 2;
+                }
             }
+        }
+        
+        if (ev->type == ME_NoteOn || ev->type == ME_NoteOff) {
+            prevNoteEv = ev;
         }
     }
 }
