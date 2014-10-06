@@ -73,7 +73,8 @@ LSGStatus lsg_initialize_generators() {
 }
 
 LSGStatus lsg_initialize_channel(LSGChannel_t* ch) {
-    ch->fq = 440;
+    ch->fq = ch->bent_fq = 440;
+    ch->lastNote = 0;
     ch->global_detune = 0;
     ch->volume = kLSGChannelVolumeMax;
     ch->global_volume = kLSGChannelVolumeMax;
@@ -222,18 +223,28 @@ LSGStatus lsg_put_channel_command_and_clear_later(int channelIndex, int offset, 
     return lsg_put_channel_command_and_clear_later_internal(ch, offset, cmd);
 }
 
+static LSG_INLINE float calcNoteFreq(int noteNo) {
+    const int oct  = noteNo / 12;
+    const int nidx = noteNo % 12;
+    return sNoteTable[nidx] * powf(2, oct) * 0.25f;
+}
+
 LSGStatus lsg_apply_channel_command(LSGChannel_t* ch, ChannelCommand cmd, int commandOffsetPosition) {
     if ((cmd & kLSGCommandBit_Enable) == 0) {
         return LSG_OK;
     }
     
-    const int keyon = cmd & kLSGCommandBit_KeyOn;
-    if (!keyon) {
-        ch->keyonCount = -1;
-    } else {
-        ch->keyonCount = 0;
-        ch->adsrPhase = 0;
+    if ((cmd & kLSGCommandBit_NoKey) == 0) {
+        const int keyon = cmd & kLSGCommandBit_KeyOn;
+        if (!keyon) {
+            ch->keyonCount = -1;
+        } else {
+            ch->keyonCount = 0;
+            ch->adsrPhase = 0;
+        }
     }
+    // else modify params only
+    
     
     if (cmd & kLSGCommandBit_Volume) {
         ch->volume = (cmd & kLSGCommandMask_Volume) >> 16;
@@ -241,29 +252,23 @@ LSGStatus lsg_apply_channel_command(LSGChannel_t* ch, ChannelCommand cmd, int co
     
     const int noteNo = cmd & kLSGCommandMask_NoteNum;
     if (noteNo) {
-        const int oct  = noteNo / 12;
-        const int nidx = noteNo % 12;
-        float base_fq = sNoteTable[nidx] * powf(2, oct) * 0.25f;
+        float base_fq = calcNoteFreq(noteNo);
         if (noteNo == 1) {
             base_fq /= 10.0f;
         }
         
-        const uint32_t pitchbits = cmd & (kLSGCommandMask_Pitch | kLSGCommandMask_PitchParam);
-        if (pitchbits) {
-            const int is_up = pitchbits & kLSGCommandBit_PitchUp;
-            const int pitch_amount = (pitchbits >> 8) & 0x3f;
-            
-            if (is_up) {
-//                printf(">>>>>> %d\n", pitch_amount);
-                base_fq += base_fq * (float)pitch_amount / 63.0f;
-            } else {
-                base_fq -= (base_fq * 0.5f) * (float)pitch_amount / 63.0f;
-            }
-        }
-        
-        ch->fq = base_fq;
+        ch->fq = ch->bent_fq = base_fq;
+        ch->lastNote = noteNo;
     }
-    
+
+    const uint32_t pitchbits = cmd & (kLSGCommandMask_Pitch | kLSGCommandMask_PitchParam);
+    if (pitchbits) {
+        const int is_up = pitchbits & kLSGCommandBit_PitchUp;
+        const int pitch_amount = (pitchbits >> 8) & 0x3f;
+        const float pfq = calcNoteFreq(ch->lastNote + (is_up ? 2 : -2));
+        ch->bent_fq = ch->fq + (pfq - ch->fq) * (float)pitch_amount / 63.0f;
+    }
+
     if (ch->exec_callback) {
         ch->exec_callback(ch->userDataForCallback, ch->selfIndex, cmd, commandOffsetPosition);
     }
@@ -444,7 +449,7 @@ fprintf(stderr, "Ch: %2d   CMD: %x   t:%8lld\n", ci, cmd, sGlobalTick);
             lsg_apply_channel_adsr(ch);
             lsg_advance_channel_state(ch);
 
-            const int fstep = (ch->fq + ch->global_detune) / baseFQ;
+            const int fstep = (ch->bent_fq + ch->global_detune) / baseFQ;
             ch->readPos = (ch->readPos + fstep) % kLSGNumGeneratorSamples;
             val += (lsg_calc_channel_gain(ch) * ch->volume * ch->global_volume) / vmax2;
         }

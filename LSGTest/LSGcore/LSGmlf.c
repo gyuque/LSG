@@ -163,6 +163,7 @@ LSGStatus read_smf_track(FILE* fp, lsg_mlf_t* p_mlf_t, int trackIndex) {
 	MLFEvent_t prevEv;
 	
 	int total_read_bytes = 0;
+    int pitchBend = 0;
 	for (int i = 0;i < 99999;++i) {
 		int dt_bytes = 0;
 		const uint32_t dt = read_smf_delta(fp, &dt_bytes);
@@ -174,6 +175,7 @@ LSGStatus read_smf_track(FILE* fp, lsg_mlf_t* p_mlf_t, int trackIndex) {
 		MLFEvent_t tempEv;
 		tempEv.waitDelta = dt;
 		tempEv.type = ME_Unknown;
+        tempEv.currentPitchBend = pitchBend;
 		
 		int ev_bytes = 0;
 		read_smf_event(fp, &ev_bytes, &tempEv);
@@ -184,6 +186,8 @@ LSGStatus read_smf_track(FILE* fp, lsg_mlf_t* p_mlf_t, int trackIndex) {
         
         if (tempEv.type == ME_Tempo) {
             p_mlf_t->tempo = tempEv.otherValue;
+        } else if (tempEv.type == ME_Pitch) {
+            pitchBend = tempEv.currentPitchBend;
         }
 
         //printf("%d bytes advance\n", ev_bytes);
@@ -329,10 +333,14 @@ LSGStatus read_smf_event(FILE* fp, int* pOutReadBytes, MLFEvent_t* pOutEv) {
 				printf("CTRLCHG   %d  %d\n", nn, param);
 				break;
 
-                case 0xE0:
+                case 0xE0: {
+                    uint16_t raw_word = (nn&0x7f) | ((param&0x7f) << 7);
+                    
                     pOutEv->type    = ME_Pitch;
                     pOutEv->channel = ch;
-                    break;
+                    pOutEv->currentPitchBend = (int)raw_word - 0x2000;
+                    // printf("  PitchBend: %d \n", pOutEv->otherValue);
+                } break;
 
 				default:
 				printf("Unknown status! %02X ******************************\n", st_type);

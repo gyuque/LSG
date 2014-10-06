@@ -52,6 +52,22 @@ LSGStatus lsg_rsvcmd_clear(LSGReservedCommandBuffer_t* pRCBuf) {
     return LSG_OK;
 }
 
+static unsigned long generatePitchBits(const MLFEvent_t* ev) {
+    unsigned long pitchbits = 0;
+    if (ev->currentPitchBend) {
+        int pb = ev->currentPitchBend / 128;
+        int pb_amount = (pb > 0) ? pb : -pb;
+        if (pb_amount > 63) { pb_amount = 63; }
+        if (pb < 0) {
+            pitchbits = kLSGCommandBit_PitchDown | (pb_amount << 8);
+        } else {
+            pitchbits = kLSGCommandBit_PitchUp | (pb_amount << 8);
+        }
+    }
+    
+    return pitchbits;
+}
+
 LSGStatus lsg_rsvcmd_fill_mlf(LSGReservedCommandBuffer_t* pRCBufArray, int nRCBufs, MLFPlaySetup_t* pPlaySetup, int64_t originTime) {
     int ch;
     
@@ -76,13 +92,17 @@ LSGStatus lsg_rsvcmd_fill_mlf(LSGReservedCommandBuffer_t* pRCBufArray, int nRCBu
             if (ev->type == ME_NoteOn) {
                 int vol = ev->velocity;
                 if (vol > 127) { vol = 127; }
+                unsigned long pitchbits = generatePitchBits(ev);
                 
-                cmd |= kLSGCommandBit_KeyOn | ev->noteNo | kLSGCommandBit_Volume | (vol << 16);
+                cmd |= kLSGCommandBit_KeyOn | ev->noteNo | kLSGCommandBit_Volume | (vol << 16) | pitchbits;
                 lsg_rsvcmd_add(rb, cmd, originTime + buft);
             } else if (ev->type == ME_NoteOff) {
                 lsg_rsvcmd_add(rb, cmd, originTime + buft);
+            } else if (ev->type == ME_Pitch) {
+                unsigned long pitchbits = generatePitchBits(ev);
+                cmd |= kLSGCommandBit_NoKey | pitchbits;
+                lsg_rsvcmd_add(rb, cmd, originTime + buft);
             }
-
         }
     }
     

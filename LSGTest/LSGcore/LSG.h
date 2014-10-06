@@ -38,7 +38,8 @@ typedef struct _LSGChannel_t {
     int readPos;
     float global_detune;
     int global_volume;
-    float fq;
+    float fq, bent_fq;
+    int lastNote;
     int volume;
     int currentBaseGain4X;
     int keyonCount;
@@ -86,6 +87,7 @@ typedef struct _LSGReservedCommandBuffer_t {
 #define LSGERR_GENERIC (-99)
 
 #define kLSGCommandBit_Enable   0x80000000
+#define kLSGCommandBit_NoKey    0x40000000
 #define kLSGCommandBit_KeyOn    0x00000080
 #define kLSGCommandMask_NoteNum 0x0000007f
 
@@ -120,6 +122,7 @@ typedef struct _MLFEvent_t {
 	MLFEventType type;
 	int channel;
 	int noteNo;
+    int currentPitchBend;
 	int velocity;
     
     int otherValue;
