@@ -25,9 +25,9 @@ static size_t read_smf_u32(FILE* fp);
 static size_t read_smf_u16(FILE* fp);
 static size_t read_smf_be(FILE* fp, int nBytes);
 
-LSGStatus lsg_load_mlf(lsg_mlf_t* p_mlf_t, const char* filename) {
+LSGStatus lsg_load_mlf(lsg_mlf_t* p_mlf_t, const char* filename, int auto_drum_mapping_ch) {
 	FILE* fp;
-    p_mlf_t->drum_mapping_channel = 9;
+    p_mlf_t->drum_mapping_channel = auto_drum_mapping_ch;
 	p_mlf_t->nTracks = 0;
 	p_mlf_t->tempo = 120;
 	p_mlf_t->tracks_arr = NULL;

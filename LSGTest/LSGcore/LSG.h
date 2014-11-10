@@ -33,6 +33,7 @@ typedef struct _LSGChannel_t {
     int selfIndex;
     
     int generatorIndex;
+    int customNoteIndex;
     LSG_ADSR adsr;
     
     int readPos;
@@ -99,6 +100,7 @@ typedef struct _LSGReservedCommandBuffer_t {
 #define kLSGCommandBit_Volume     0x00800000
 #define kLSGCommandMask_Volume    0x007f0000
 
+#define kLSGNoteMappingLength 128
 
 // MLF Types
 
@@ -130,6 +132,7 @@ typedef struct _MLFEvent_t {
 
 typedef struct _MappedMLFChannel_t {
     MLFEvent_t* sortedEvents;
+    int customNoteTableIndex;
     int eventsLength;
     int userData;
     
@@ -177,6 +180,8 @@ LSGStatus lsg_noteoff_channel_immediately(int channelIndex);
 LSGStatus lsg_apply_channel_adsr(LSGChannel_t* ch);
 LSGStatus lsg_advance_channel_state(LSGChannel_t* ch);
 LSGStatus lsg_set_channel_command_exec_callback(int channelIndex, lsg_channel_command_executed_callback callback, void* userData);
+LSGStatus lsg_set_custom_note_frequency(int index, float fq);
+LSGStatus lsg_use_custom_notes(int channelIndex, int customNotesIndex);
 
 int64_t lsg_get_global_tick();
 
@@ -202,7 +207,7 @@ LSGStatus lsg_rsvcmd_from_mml(LSGReservedCommandBuffer_t* pRCBuf, int w_duration
 LSGStatus lsg_rsvcmd_fill_mlf(LSGReservedCommandBuffer_t* pRCBufArray, int nRCBufs, MLFPlaySetup_t* pPlaySetup, int64_t originTime);
 
 // MLF APIs
-LSGStatus lsg_load_mlf(lsg_mlf_t* p_mlf_t, const char* filename);
+LSGStatus lsg_load_mlf(lsg_mlf_t* p_mlf_t, const char* filename, int auto_drum_mapping_ch);
 void lsg_free_mlf(lsg_mlf_t* p_mlf_t);
 
 int lsg_mlf_count_channel_events(lsg_mlf_t* p_mlf_t, int channelIndex);

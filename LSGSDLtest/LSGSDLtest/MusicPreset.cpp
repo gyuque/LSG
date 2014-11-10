@@ -1,6 +1,7 @@
 #include "MusicPreset.h"
 
 MusicPreset::MusicPreset() {
+    mShouldUseAutoDrumMapping = true;
 }
 
 MusicPreset::~MusicPreset() {
@@ -93,6 +94,10 @@ void MusicPreset::traverseRoot(yaml_document_t* ydoc, yaml_node_t* rootNode) {
             case kTopSection_Mapping:
                 traverseChannelMapping(ydoc, pair->value);
                 break;
+                
+            case kTopSection_CustomNotes:
+                traverseCustomNotes(ydoc, pair->value);
+                break;
         }
 
         ++pair;
@@ -135,6 +140,47 @@ bool MusicPreset::traverseChannelMapping(yaml_document_t* ydoc, int mappingNodeI
     }
 
     return true;
+}
+
+bool MusicPreset::traverseCustomNotes(yaml_document_t* ydoc, int mappingNodeIndex) {
+    yaml_node_t* mappingNode = yaml_document_get_node(ydoc, mappingNodeIndex);
+    if (mappingNode->type != YAML_MAPPING_NODE) {
+        return false;
+    }
+    
+    yaml_node_pair_t* pair = mappingNode->data.mapping.pairs.start;
+    const yaml_node_pair_t* afterEnd = mappingNode->data.mapping.pairs.top;
+    
+    for (;pair < afterEnd;) {
+        yaml_node_t* keyNode = yaml_document_get_node(ydoc, pair->key);
+        yaml_node_t* valueNode = yaml_document_get_node(ydoc, pair->value);
+
+        const float fq = readFloat(valueNode);
+        
+        std::string keyStr;
+        readString(keyStr, keyNode);
+        if (keyStr.compare("other") == 0 || keyStr.compare("others") == 0) {
+            mCustomNotesMap[-1] = fq;
+        } else {
+            const int noteno = readInt(keyNode);
+            if (noteno > 0) {
+                mCustomNotesMap[noteno] = fq;
+            }
+        }
+        
+        ++pair;
+    }
+    
+    return true;
+}
+
+float MusicPreset::getCustomNoteFrequency(int noteNo) const {
+    CustomNotesMap::const_iterator it = mCustomNotesMap.find(noteNo);
+    if (it == mCustomNotesMap.end()) {
+        return -1.0f;
+    }
+        
+    return it->second;
 }
 
 bool MusicPreset::readChannelConfiguration(MappedChannelConf& outChConf, yaml_document_t* ydoc, yaml_node_t* mappingNode) {
@@ -181,9 +227,18 @@ bool MusicPreset::readChannelConfiguration(MappedChannelConf& outChConf, yaml_do
             case kChannelConfiguration_ADSR:
                 readADSR(adsr, ydoc, valueNode);
                 break;
+                
+            case kChannelConfiguration_UseCustomNotes:
+                outChConf.useCustomMapping = readBool(valueNode);
+                break;
         }
         
+        
         ++pair;
+    }
+    
+    if (outChConf.midiCh == 9 && outChConf.useCustomMapping) {
+        mShouldUseAutoDrumMapping = false;
     }
     
     return true;
@@ -199,6 +254,8 @@ int MusicPreset::lookupTopLevelSectionType(yaml_node_t* node) {
         return kTopSection_Input;
     } else if (k == 'm') {
         return kTopSection_Mapping;
+    } else if (k == 'c') {
+        return kTopSection_CustomNotes;
     }
     
     return kUnknownNode;
@@ -244,6 +301,8 @@ int MusicPreset::lookupChannelConfigurationType(yaml_node_t* node) {
             return kChannelConfiguration_Detune; break;
         case 'a':
             return kChannelConfiguration_ADSR; break;
+        case 'u':
+            return kChannelConfiguration_UseCustomNotes; break;
     }
     
     return kUnknownNode;
@@ -270,6 +329,17 @@ ConfGeneratorType MusicPreset::lookupGeneratorType(yaml_node_t* node) {
     }
     
     return G_SQUARE;
+}
+
+bool MusicPreset::readBool(yaml_node_t* node) {
+    if (node->type != YAML_SCALAR_NODE) {
+        return false;
+    }
+    
+    std::string s;
+    readString(s, node);
+    
+    return (s.compare("yes") == 0) || (s.compare("on") == 0) || (s.compare("true") == 0);
 }
 
 float MusicPreset::readFloat(yaml_node_t* node) {

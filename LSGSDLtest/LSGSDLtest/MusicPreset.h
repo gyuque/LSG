@@ -24,6 +24,7 @@ typedef struct _MappedChannelConf {
         volume = 1.0f;
         generatorType = G_SQUARE;
         detune = 0;
+        useCustomMapping = false;
     }
     
     ConfGeneratorType generatorType;
@@ -32,9 +33,11 @@ typedef struct _MappedChannelConf {
     float volume;
     float detune;
     LSG_ADSR adsr;
+    bool useCustomMapping;
 } MappedChannelConf;
 
 typedef std::map<int, MappedChannelConf> ChannelConfMap;
+typedef std::map<int, float> CustomNotesMap;
 
 class MusicPreset
 {
@@ -45,12 +48,14 @@ public:
     static const int kUnknownNode        = -1;
     static const int kTopSection_Input   = 1;
     static const int kTopSection_Mapping = 2;
+    static const int kTopSection_CustomNotes = 3;
 
     static const int kChannelConfiguration_Generator = 1;
     static const int kChannelConfiguration_MidiCh    = 2;
     static const int kChannelConfiguration_Volume    = 3;
     static const int kChannelConfiguration_Detune    = 4;
     static const int kChannelConfiguration_ADSR      = 5;
+    static const int kChannelConfiguration_UseCustomNotes = 6;
 
     bool loadFromYAMLFile(const char* filename);
     void dump();
@@ -58,10 +63,14 @@ public:
     const char* getInputName() const;
     bool isChannelMapped(int lsgChannel) const;
     const MappedChannelConf& getChannelConf(int lsgChannel) const;
+    
+    float getCustomNoteFrequency(int noteNo) const;
+    bool getShouldUseAutoDrumMapping() const { return mShouldUseAutoDrumMapping; }
 protected:
     void traverseRoot(yaml_document_t* ydoc, yaml_node_t* rootNode);
     bool readInput(yaml_document_t* ydoc, int valueNodeIndex);
     bool traverseChannelMapping(yaml_document_t* ydoc, int mappingNodeIndex);
+    bool traverseCustomNotes(yaml_document_t* ydoc, int mappingNodeIndex);
     bool readChannelConfiguration(MappedChannelConf& outChConf, yaml_document_t* ydoc, yaml_node_t* mappingNode);
     static bool readADSR(LSG_ADSR& outADSR, yaml_document_t* ydoc, yaml_node_t* mappingNode);
     static bool readGeneratorCoefficients(WavCoefficientList& outVec, yaml_document_t* ydoc, yaml_node_t* seqNode);
@@ -69,6 +78,7 @@ protected:
     static int lookupChannelConfigurationType(yaml_node_t* node);
     static int lookupChannelIndex(yaml_node_t* node);
     static ConfGeneratorType lookupGeneratorType(yaml_node_t* node);
+    static bool readBool(yaml_node_t* node);
     static float readFloat(yaml_node_t* node);
     static int readInt(yaml_node_t* node);
     static void readString(std::string& outStr, yaml_node_t* node);
@@ -76,6 +86,8 @@ protected:
     
     std::string mInputName;
     ChannelConfMap mChannelMap;
+    CustomNotesMap mCustomNotesMap;
+    bool mShouldUseAutoDrumMapping;
 };
 
 #endif

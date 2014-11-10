@@ -8,6 +8,7 @@
 
 static bool lookupInputName(std::string& outStr, int argc, char* argv[]);
 static void configureLSG(const MusicPreset& preset);
+static void configureLSGCustomNotes(const MusicPreset& preset);
 static void loadMidi(const MusicPreset& preset);
 static void setupReserveBuffers();
 static void destroyReserveBuffers();
@@ -103,7 +104,7 @@ void configureLSG(const MusicPreset& preset) {
                 
             case G_IFT: {
                 const float* coefs = &chconf.coefficients[0];
-                lsg_generate_sin_v(ch, coefs, chconf.coefficients.size());
+                lsg_generate_sin_v(ch, coefs, (unsigned int)chconf.coefficients.size());
             } break;
                 
             default:
@@ -116,6 +117,23 @@ void configureLSG(const MusicPreset& preset) {
         lsg_set_channel_global_detune(ch, chconf.detune);
         lsg_set_channel_global_volume(ch, (float)kLSGChannelVolumeMax * chconf.volume);
     }
+    
+    configureLSGCustomNotes(preset);
+}
+
+void configureLSGCustomNotes(const MusicPreset& preset) {
+    const float othersFq = preset.getCustomNoteFrequency(-1);
+    if (othersFq > 0.0f) {
+        lsg_set_custom_note_frequency(0, othersFq);
+    }
+
+    for (int i = 1;i < kLSGNoteMappingLength;++i) {
+        const float fq = preset.getCustomNoteFrequency(i);
+        if (fq > 0.0f) {
+            lsg_set_custom_note_frequency(i, fq);
+        }
+    }
+
 }
 
 void setupReserveBuffers() {
@@ -138,7 +156,7 @@ void loadMidi(const MusicPreset& preset) {
     
     fprintf(stderr, "- - Loading sequence... - -\n");
     lsg_mlf_t mlf;
-    lsg_load_mlf(&mlf, preset.getInputName());
+    lsg_load_mlf(&mlf, preset.getInputName(), preset.getShouldUseAutoDrumMapping() ? 9 : -1);
     fprintf(stderr, "Tempo=%d  Timebase=%d\n", mlf.tempo, mlf.timeBase);
     
     for (int i = 0;i < kNRsvBufs;++i) {
@@ -147,6 +165,7 @@ void loadMidi(const MusicPreset& preset) {
             sMLFSetup.chmap[i].sortedEvents = lsg_mlf_create_sorted_channel_events(&mlf, chconf.midiCh);
             sMLFSetup.chmap[i].eventsLength = lsg_mlf_count_channel_events(&mlf, chconf.midiCh);
             sMLFSetup.chmap[i].defaultADSR = chconf.adsr;
+            sMLFSetup.chmap[i].customNoteTableIndex = chconf.useCustomMapping ? 1 : 0;
         }
     }
     

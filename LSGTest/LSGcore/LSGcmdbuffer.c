@@ -84,6 +84,10 @@ LSGStatus lsg_rsvcmd_fill_mlf(LSGReservedCommandBuffer_t* pRCBufArray, int nRCBu
             lsg_set_channel_adsr(ch, &(mappedCh->defaultADSR));
         }
         
+        if (mappedCh->customNoteTableIndex) {
+            lsg_use_custom_notes(ch, mappedCh->customNoteTableIndex);
+        }
+        
         for (int i = 0;i < len;++i) {
             const MLFEvent_t* ev = &(mappedCh->sortedEvents[i]);
             

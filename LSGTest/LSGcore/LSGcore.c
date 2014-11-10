@@ -23,6 +23,8 @@ static const float sNoteTable[12] = {
     61.735413f  // 11 B
 };
 
+static float sCustomNoteMapping[kLSGNoteMappingLength];
+
 #define kBinNoiseFeedback 0x4000
 #define kBinNoiseTap1     0x01
 #define kBinNoiseTap2     0x02
@@ -32,6 +34,7 @@ static LSGSample sGeneratorBuffers[kLSGNumGenerators][kLSGNumGeneratorSamples];
 static LSGChannel_t sChannelStatuses[kLSGNumOutChannels];
 
 static LSGStatus lsg_initialize_channel(LSGChannel_t* ch);
+static LSGStatus lsg_initialize_custom_note_table();
 static LSGStatus lsg_initialize_channel_command_buffer(LSGChannel_t* ch);
 static LSGStatus lsg_initialize_generators();
 static LSGStatus lsg_fill_generator_buffer(LSGSample* buf, size_t len, LSGSample val);
@@ -45,6 +48,8 @@ LSGStatus lsg_initialize() {
     if (lsg_initialize_generators() != LSG_OK) {
         return LSGERR_GENERIC;
     }
+    
+    lsg_initialize_custom_note_table();
     
     for (int i = 0;i < kLSGNumOutChannels;++i) {
         lsg_initialize_channel(&sChannelStatuses[i]);
@@ -81,6 +86,7 @@ LSGStatus lsg_initialize_channel(LSGChannel_t* ch) {
 //    ch->fq = 261.625565f;
 //    ch->fq = 293.66476f;
     ch->generatorIndex = 0;
+    ch->customNoteIndex = 0;
     ch->currentBaseGain4X = 0;
     ch->readPos = 0;
     
@@ -100,6 +106,32 @@ LSGStatus lsg_initialize_channel(LSGChannel_t* ch) {
     ch->userDataForCallback = NULL;
     
     lsg_initialize_channel_command_buffer(ch);
+    return LSG_OK;
+}
+
+LSGStatus lsg_initialize_custom_note_table() {
+    for (int i = 0;i < kLSGNoteMappingLength;++i) {
+        sCustomNoteMapping[i] = 440.0f;
+    }
+    
+    return LSG_OK;
+}
+
+LSGStatus lsg_set_custom_note_frequency(int index, float fq) {
+    if (index >= kLSGNoteMappingLength) { return LSGERR_PARAM_OUTBOUND; }
+    if (index < 0) { index = 0; }
+    
+    sCustomNoteMapping[index] = fq;
+        
+    return LSG_OK;
+}
+
+LSGStatus lsg_use_custom_notes(int channelIndex, int customNotesIndex) {
+    if (!channel_index_in_range(channelIndex)) {
+        return LSGERR_PARAM_OUTBOUND;
+    }
+    
+    sChannelStatuses[channelIndex].customNoteIndex = customNotesIndex;
     return LSG_OK;
 }
 
@@ -223,10 +255,16 @@ LSGStatus lsg_put_channel_command_and_clear_later(int channelIndex, int offset, 
     return lsg_put_channel_command_and_clear_later_internal(ch, offset, cmd);
 }
 
-static LSG_INLINE float calcNoteFreq(int noteNo) {
+static LSG_INLINE float calcNoteFreq(int noteNo, int custom) {
+    if (custom) {
+        return sCustomNoteMapping[noteNo];
+    }
+
+    const float mul = (noteNo == 1) ? 0.025f : 0.25f;
     const int oct  = noteNo / 12;
     const int nidx = noteNo % 12;
-    return sNoteTable[nidx] * powf(2, oct) * 0.25f;
+    
+    return sNoteTable[nidx] * powf(2, oct) * mul;
 }
 
 LSGStatus lsg_apply_channel_command(LSGChannel_t* ch, ChannelCommand cmd, int commandOffsetPosition) {
@@ -252,10 +290,7 @@ LSGStatus lsg_apply_channel_command(LSGChannel_t* ch, ChannelCommand cmd, int co
     
     const int noteNo = cmd & kLSGCommandMask_NoteNum;
     if (noteNo) {
-        float base_fq = calcNoteFreq(noteNo);
-        if (noteNo == 1) {
-            base_fq /= 10.0f;
-        }
+        float base_fq = calcNoteFreq(noteNo, ch->customNoteIndex);
         
         ch->fq = ch->bent_fq = base_fq;
         ch->lastNote = noteNo;
@@ -265,7 +300,7 @@ LSGStatus lsg_apply_channel_command(LSGChannel_t* ch, ChannelCommand cmd, int co
     if (pitchbits) {
         const int is_up = pitchbits & kLSGCommandBit_PitchUp;
         const int pitch_amount = (pitchbits >> 8) & 0x3f;
-        const float pfq = calcNoteFreq(ch->lastNote + (is_up ? 2 : -2));
+        const float pfq = calcNoteFreq(ch->lastNote + (is_up ? 2 : -2), ch->customNoteIndex);
         ch->bent_fq = ch->fq + (pfq - ch->fq) * (float)pitch_amount / 63.0f;
     }
 
