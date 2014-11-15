@@ -1,6 +1,7 @@
 #include <stdio.h>
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <memory.h>
 #include "LSG.h"
 #define generator_index_in_range(x) ((x) >= 0 && (x) < kLSGNumGenerators)
 #define generator_index_good(x) (((x) >= 0 && (x) < kLSGNumGenerators) || (x) == kLSGWhiteNoiseGeneratorSpecialIndex)
@@ -23,6 +24,44 @@ static const float sNoteTable[12] = {
     61.735413f  // 11 B
 };
 
+static const float sFIRTable17[17] = {
+    0.0f,
+    0.000068f,
+    0.001881f,
+    0.001395f,
+   -0.021226f,
+   -0.036988f,
+    0.063382f,
+    0.283174f,
+    0.417058f,
+    0.283174f,
+    0.063382f,
+   -0.036988f,
+   -0.021226f,
+    0.001395f,
+    0.001881f,
+    0.000068f,
+    0.0f
+};
+
+static const float sFIRTable31[31] ={ 0, -0.000003682586018518, -0.000088028839469061, -0.000029040779732058, 0.0010784227814733, 0.0014687531436647,
+-0.0034569422826696, -0.0083635434148992, 0.0032702997919358, 0.024625314361636, 0.011093218999269, -0.04856620452975,
+-0.063476786067698, 0.070943134160791, 0.29907779451732, 0.42483870967742, 0.29907779451732, 0.070943134160791,
+-0.063476786067698, -0.04856620452975, 0.011093218999269, 0.024625314361636, 0.0032702997919358, -0.0083635434148992,
+-0.0034569422826696, 0.0014687531436647, 0.0010784227814733,
+    -0.000029040779732058, -0.00008802883946906, -0.000003682586018518, 0};
+
+static const float sFIRTable31_2[31] = {0, -0.000003461629530124, 0.000021458207524647, 0.00031673735569006, 0.001138648914712, 0.0018785024735357, 0.000461009277752,
+    -0.005431234657147, -0.015124521783638, -0.02205292618621, -0.014684763138026, 0.017321837795055, 0.074695443394287, 0.14391357642232, 0.20104773711845, 0.23322580645161, 0.20104773711845,
+    0.14391357642232, 0.074695443394287, 0.017321837795055, -0.014684763138026, -0.02205292618621, -0.015124521783638, -0.005431234657147, 0.000461009277752, 0.0018785024735357, 0.001138648914712,
+    0.00031673735569006, 0.000021458207524647, -0.000003461629530124, 0};
+
+static const float sFIRTable63[63] = {0, -0, -0.000001, -0.000003, 0.000001, 0.000028, 0.0001, 0.000239, 0.000448, 0.0007, 0.000916, 0.000972, 0.000708, -0.000037, -0.001373,
+    -0.003306, -0.005679, -0.008146, -0.01017, -0.011066, -0.010083, -0.006526, 0.000115, 0.010038, 0.023033, 0.03845,
+    0.055222, 0.071969, 0.087157, 0.099294, 0.107132, 0.119841, 0.107132, 0.099294, 0.087157, 0.071969, 0.055222, 0.03845,
+    0.023033, 0.010038, 0.000115, -0.006526, -0.010083, -0.011066, -0.01017, -0.008146, -0.005679, -0.003306, -0.001373, -0.000037, 0.000708, 0.000972, 0.000916, 0.0007,
+    0.000448, 0.000239, 0.0001, 0.000028, 0.000001, -0.000003, -0.000001, -0, 0};
+
 static float sCustomNoteMapping[kLSGNoteMappingLength];
 
 #define kBinNoiseFeedback 0x4000
@@ -31,16 +70,20 @@ static float sCustomNoteMapping[kLSGNoteMappingLength];
 
 static int64_t sGlobalTick = 0;
 static LSGSample sGeneratorBuffers[kLSGNumGenerators][kLSGNumGeneratorSamples];
+static LSGSample sGeneratorTempBuf[kLSGNumGeneratorSamples];
 static LSGChannel_t sChannelStatuses[kLSGNumOutChannels];
 
 static LSGStatus lsg_initialize_channel(LSGChannel_t* ch);
 static LSGStatus lsg_initialize_custom_note_table();
 static LSGStatus lsg_initialize_channel_command_buffer(LSGChannel_t* ch);
+static LSGStatus lsg_initialize_channel_fir_buffer(LSGChannel_t* ch);
 static LSGStatus lsg_initialize_generators();
 static LSGStatus lsg_fill_generator_buffer(LSGSample* buf, size_t len, LSGSample val);
 static LSGStatus lsg_apply_channel_command(LSGChannel_t* ch, ChannelCommand cmd, int commandOffsetPosition);
 static LSGSample lsg_calc_channel_gain(LSGChannel_t* ch);
+static LSGSample lsg_update_channel_fir(LSGChannel_t* ch, LSGSample newValue);
 static LSGStatus lsg_fill_reserved_commands(int64_t startTick, LSGChannel_t* ch);
+static LSGStatus lsg_apply_generator_filter(int generatorIndex);
 
 LSGStatus lsg_initialize() {
     sGlobalTick = 0;
@@ -106,6 +149,8 @@ LSGStatus lsg_initialize_channel(LSGChannel_t* ch) {
     ch->userDataForCallback = NULL;
     
     lsg_initialize_channel_command_buffer(ch);
+    lsg_initialize_channel_fir_buffer(ch);
+
     return LSG_OK;
 }
 
@@ -141,6 +186,16 @@ LSGStatus lsg_initialize_channel_command_buffer(LSGChannel_t* ch) {
     }
     
     ch->ringHeadPos = 0;
+    
+    return LSG_OK;
+}
+
+LSGStatus lsg_initialize_channel_fir_buffer(LSGChannel_t* ch) {
+    LSGSample* buf = ch->fir_buf;
+    
+    for (int i = 0;i < kChannelFIRLength;++i) {
+        buf[i] = 0;
+    }
     
     return LSG_OK;
 }
@@ -453,6 +508,34 @@ LSGStatus lsg_fill_generator_buffer(LSGSample* buf, size_t len, LSGSample val) {
     return LSG_OK;
 }
 
+LSGSample lsg_update_channel_fir(LSGChannel_t* ch, LSGSample newValue) {
+    LSGSample* buf = ch->fir_buf;
+    buf[8] = buf[7];
+    buf[7] = buf[6];
+    buf[6] = buf[5];
+    buf[5] = buf[4];
+    buf[4] = buf[3];
+    buf[3] = buf[2];
+    buf[2] = buf[1];
+    buf[1] = buf[0];
+    buf[0] = newValue;
+
+    return (float)buf[1] * 0.0039866f +
+           (float)buf[2] *-0.0495225f +
+           (float)buf[3] * 0.1564982f +
+           (float)buf[4] * 0.7788888f +
+           (float)buf[5] * 0.7788888f +
+           (float)buf[6] *-0.0495225f +
+           (float)buf[7] * 0.0039866f;
+
+/*
+    return (float)buf[1] * 0.0078283f +
+           (float)buf[2] * 0.1932567f +
+           (float)buf[3] * 0.4328571f +
+           (float)buf[4] * 0.1932567f +
+           (float)buf[5] * 0.0078283f;*/
+}
+
 // ==== OUTPUT API ====
 static LSG_INLINE LSGStatus lsg_synthesize_internal(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo, int bLE) {
     const float baseFQ = (float)kLSGOutSamplingRate / (float)kLSGNumGeneratorSamples;
@@ -486,7 +569,9 @@ fprintf(stderr, "Ch: %2d   CMD: %x   t:%8lld\n", ci, cmd, sGlobalTick);
 
             const int fstep = (ch->bent_fq + ch->global_detune) / baseFQ;
             ch->readPos = (ch->readPos + fstep) % kLSGNumGeneratorSamples;
-            val += (lsg_calc_channel_gain(ch) * ch->volume * ch->global_volume) / vmax2;
+            const int channelVal = (lsg_calc_channel_gain(ch) * ch->volume * ch->global_volume) / vmax2;
+//            val += lsg_update_channel_fir(ch, channelVal);
+            val += channelVal;
         }
 
         if (val > 32767) { val = 32767; }
@@ -600,6 +685,7 @@ LSGStatus lsg_generate_square(int generatorBufferIndex) {
         p[pos2++] = -kGoodMaxVolume;
     }
     
+    lsg_apply_generator_filter(generatorBufferIndex);
     return LSG_OK;
 }
 
@@ -622,6 +708,7 @@ LSGStatus lsg_generate_square_13(int generatorBufferIndex) {
         p[pos4++] = -kGoodMaxVolume;
     }
     
+    lsg_apply_generator_filter(generatorBufferIndex);
     return LSG_OK;
 }
 
@@ -640,6 +727,7 @@ LSGStatus lsg_generate_square_2114(int generatorBufferIndex) {
         }
     }
     
+    lsg_apply_generator_filter(generatorBufferIndex);
     return LSG_OK;
 }
 
@@ -746,6 +834,31 @@ LSGSample lsg_get_generator_buffer_sample(int generatorBufferIndex, int sampleIn
     
     LSGSample* p = sGeneratorBuffers[generatorBufferIndex];
     return p[sampleIndex];
+}
+
+LSGStatus lsg_apply_generator_filter(int generatorIndex) {
+    if (!generator_index_good( generatorIndex )) {
+        return LSGERR_PARAM_OUTBOUND;
+    }
+    
+    const int flen = 63;
+    const int buflen = kLSGNumGeneratorSamples;
+    LSGSample* p = sGeneratorBuffers[generatorIndex];
+    LSGSample* tmp = sGeneratorTempBuf;
+    memcpy(tmp, p, sizeof(LSGSample) * buflen);
+    
+    for (int i = 0;i < buflen;++i) {
+        float sum = 0;
+        for (int j = 0;j < flen;++j) {
+            const int pos = (i + buflen - j*1000) % buflen;
+            sum += (float)tmp[pos] * sFIRTable63[j];
+        }
+        
+        //fprintf(stdout, "%d, %d\n", p[i], (int)sum);
+        p[i] = sum;
+    }
+    
+    return LSG_OK;
 }
 
 LSGStatus lsg_channel_bind_rsvcmd(int channelIndex, LSGReservedCommandBuffer_t* pRCBuf) {

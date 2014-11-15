@@ -123,14 +123,15 @@ void configureLSG(const MusicPreset& preset) {
 
 void configureLSGCustomNotes(const MusicPreset& preset) {
     const float othersFq = preset.getCustomNoteFrequency(-1);
-    if (othersFq > 0.0f) {
-        lsg_set_custom_note_frequency(0, othersFq);
-    }
 
     for (int i = 1;i < kLSGNoteMappingLength;++i) {
         const float fq = preset.getCustomNoteFrequency(i);
         if (fq > 0.0f) {
             lsg_set_custom_note_frequency(i, fq);
+        } else {
+            if (othersFq >= 0.0f) {
+                lsg_set_custom_note_frequency(i, othersFq);
+            }
         }
     }
 

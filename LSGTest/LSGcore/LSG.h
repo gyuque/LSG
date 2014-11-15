@@ -18,6 +18,7 @@ typedef int LSGStatus;
 typedef uint32_t ChannelCommand;
 #define kChannelCommandBufferLength 441
 #define kChannelCommandInterval 100
+#define kChannelFIRLength 9
 
 typedef struct _LSG_ADSR {
     int attack_rate;
@@ -46,6 +47,7 @@ typedef struct _LSGChannel_t {
     int keyonCount;
     int adsrPhase;
     unsigned short noiseRegister;
+    LSGSample fir_buf[kChannelFIRLength];
     
     ChannelCommand commandRingBuffer[kChannelCommandBufferLength];
     int ringHeadPos;
