@@ -26,6 +26,9 @@ LSGStatus lsg_rsvcmd_init(LSGReservedCommandBuffer_t* pRCBuf, size_t length) {
 LSGStatus lsg_rsvcmd_destroy(LSGReservedCommandBuffer_t* pRCBuf) {
     if (!pRCBuf) { return LSGERR_NULLPTR; }
 
+    pRCBuf->length = 0;
+    pRCBuf->readPosition = 0;
+    pRCBuf->writtenLength = 0;
     free(pRCBuf->array);
     return LSG_OK;
 }
@@ -68,14 +71,27 @@ static unsigned long generatePitchBits(const MLFEvent_t* ev) {
     return pitchbits;
 }
 
+
+static void lsg_rsvcmd_mark_loop_start(LSGReservedCommandBuffer_t* rb, const MLFEvent_t* ev, int loopStartTick, int* pLoopStartSet) {
+    //fprintf(stderr, "    %d  %d\n", ev->absoluteTicks, loopStartTick);
+    if (!(*pLoopStartSet) &&  ev->absoluteTicks >= loopStartTick) {
+        *pLoopStartSet = 1;
+        rb->loopFirstIndex = rb->writtenLength - 1;
+    }
+}
+
 LSGStatus lsg_rsvcmd_fill_mlf(LSGReservedCommandBuffer_t* pRCBufArray, int nRCBufs, MLFPlaySetup_t* pPlaySetup, int64_t originTime) {
     int ch;
+    const int use_loop = lsg_mlf_is_loop_valid(&pPlaySetup->loopDesc);
     
     for (ch = 0;ch < kLSGNumOutChannels;++ch) {
         // refer rv buffer
         if (ch >= nRCBufs) { break; }
         LSGReservedCommandBuffer_t* rb = &pRCBufArray[ch];
-
+        rb->loopFirstIndex = 0;
+        rb->loopLastIndex = 0;
+        rb->loopStartTime = originTime + pPlaySetup->loopDesc.startTicks * pPlaySetup->deltaScale;
+        rb->loopEndTime = originTime + pPlaySetup->loopDesc.endTicks * pPlaySetup->deltaScale;
 
         MappedMLFChannel_t* mappedCh = &pPlaySetup->chmap[ch];
         const int len = mappedCh->eventsLength;
@@ -88,6 +104,7 @@ LSGStatus lsg_rsvcmd_fill_mlf(LSGReservedCommandBuffer_t* pRCBufArray, int nRCBu
             lsg_use_custom_notes(ch, mappedCh->customNoteTableIndex);
         }
         
+        int bLoopStartSet = 0; // Start marker processed?
         for (int i = 0;i < len;++i) {
             const MLFEvent_t* ev = &(mappedCh->sortedEvents[i]);
             
@@ -100,14 +117,28 @@ LSGStatus lsg_rsvcmd_fill_mlf(LSGReservedCommandBuffer_t* pRCBufArray, int nRCBu
                 
                 cmd |= kLSGCommandBit_KeyOn | ev->noteNo | kLSGCommandBit_Volume | (vol << 16) | pitchbits;
                 lsg_rsvcmd_add(rb, cmd, originTime + buft);
+                if (use_loop){ lsg_rsvcmd_mark_loop_start(rb, ev, pPlaySetup->loopDesc.startTicks, &bLoopStartSet); }
             } else if (ev->type == ME_NoteOff) {
                 lsg_rsvcmd_add(rb, cmd, originTime + buft);
+                if (use_loop){ lsg_rsvcmd_mark_loop_start(rb, ev, pPlaySetup->loopDesc.startTicks, &bLoopStartSet); }
             } else if (ev->type == ME_Pitch) {
                 unsigned long pitchbits = generatePitchBits(ev);
                 cmd |= kLSGCommandBit_NoKey | pitchbits;
                 lsg_rsvcmd_add(rb, cmd, originTime + buft);
+                if (use_loop){ lsg_rsvcmd_mark_loop_start(rb, ev, pPlaySetup->loopDesc.startTicks, &bLoopStartSet); }
             }
-        }
+
+            if (use_loop) {
+                // Write last index inside loop
+                if (ev->absoluteTicks <= pPlaySetup->loopDesc.endTicks && rb->writtenLength > 0) {
+                    rb->loopLastIndex = rb->writtenLength - 1;
+                }
+            }
+//if (ev->type == ME_NoteOn)
+//            fprintf(stderr, "    @ %d %d\n", ev->absoluteTicks, buft);
+        } // end one channel
+        
+//        fprintf(stderr, "Loop info: %ld  %ld  %lld\n", rb->loopFirstIndex, rb->loopLastIndex, rb->loopStartTime);
     }
     
     return LSG_OK;

@@ -1,5 +1,5 @@
 // LSG ONGEN - - - Laotour Sound Generator
-// Version 0.1
+// Version 0.2
 // 2014 Satoshi Ueyama
 
 #ifndef LSGTest_LSG_h
@@ -40,6 +40,8 @@ typedef struct _LSGChannel_t {
     int readPos;
     float global_detune;
     int global_volume;
+    int system_volume;
+    int system_vol_dest;
     float fq, bent_fq;
     int lastNote;
     int volume;
@@ -66,13 +68,17 @@ typedef struct _LSGReservedCommandBuffer_t {
     size_t length;
     size_t writtenLength;
     int readPosition;
+    size_t loopFirstIndex;
+    size_t loopLastIndex;
+    int64_t loopStartTime;
+    int64_t loopEndTime;
     LSGReservedCommand_t* array;
 } LSGReservedCommandBuffer_t;
 
 #define kLSGOutSamplingRate 44100
-#define kLSGNumGenerators 10
+#define kLSGNumGenerators 13
 #define kLSGNumGeneratorSamples (44100*8)
-#define kLSGNumOutChannels 10
+#define kLSGNumOutChannels 13
 #define kLSGRawGainMax4X 131072
 #define kLSGChannelVolumeMax 127
 
@@ -113,11 +119,17 @@ typedef enum _MLFEventType {
 	ME_ControlChange = 0xb0,
     ME_Pitch         = 0xe0,
 	
+	ME_LoopMarker = 0xff06,
 	ME_Tempo = 0xff51,
 	ME_MetaEventUnknown = 0xfffe,
 	ME_Unknown = 0xffff,
 	ME_RunningStatus = 0x10000
 } MLFEventType;
+
+typedef struct _MLFLoopDesc {
+	uint32_t startTicks;
+	uint32_t endTicks;
+} MLFLoopDesc;
 
 typedef struct _MLFEvent_t {
 	uint32_t waitDelta;
@@ -158,16 +170,19 @@ typedef struct _lsg_mlf_t {
     int drum_mapping_channel;
 	
 	MLFTrack_t* tracks_arr;
+    MLFLoopDesc loopDesc;
 } lsg_mlf_t;
 
 typedef struct _MLFPlaySetup_t {
     int deltaScale;
+    MLFLoopDesc loopDesc;
     MappedMLFChannel_t chmap[kLSGNumOutChannels];
 } MLFPlaySetup_t;
 
 
 // Public APIs
 LSGStatus lsg_initialize();
+LSGStatus lsg_channel_initialize_volume_params(int channelIndex);
 LSGStatus lsg_synthesize_BE16(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo);
 LSGStatus lsg_synthesize_LE16(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo);
 LSGStatus lsg_set_channel_frequency(int channelIndex, float fq);
@@ -182,8 +197,14 @@ LSGStatus lsg_noteoff_channel_immediately(int channelIndex);
 LSGStatus lsg_apply_channel_adsr(LSGChannel_t* ch);
 LSGStatus lsg_advance_channel_state(LSGChannel_t* ch);
 LSGStatus lsg_set_channel_command_exec_callback(int channelIndex, lsg_channel_command_executed_callback callback, void* userData);
+LSGStatus lsg_initialize_custom_note_table();
 LSGStatus lsg_set_custom_note_frequency(int index, float fq);
 LSGStatus lsg_use_custom_notes(int channelIndex, int customNotesIndex);
+
+// fade control
+LSGStatus lsg_set_channel_system_volume(int channelIndex, int vol);
+LSGStatus lsg_set_channel_auto_fade(int channelIndex, int dest_vol);
+LSGStatus lsg_set_channel_auto_fade_max(int channelIndex);
 
 int64_t lsg_get_global_tick();
 
@@ -209,6 +230,7 @@ LSGStatus lsg_rsvcmd_from_mml(LSGReservedCommandBuffer_t* pRCBuf, int w_duration
 LSGStatus lsg_rsvcmd_fill_mlf(LSGReservedCommandBuffer_t* pRCBufArray, int nRCBufs, MLFPlaySetup_t* pPlaySetup, int64_t originTime);
 
 // MLF APIs
+LSGStatus lsg_init_mlf(lsg_mlf_t* p_mlf_t);
 LSGStatus lsg_load_mlf(lsg_mlf_t* p_mlf_t, const char* filename, int auto_drum_mapping_ch);
 void lsg_free_mlf(lsg_mlf_t* p_mlf_t);
 
@@ -219,6 +241,7 @@ void lsg_mlf_init_play_setup_struct(MLFPlaySetup_t* pSetup);
 void lsg_mlf_destroy_play_setup_struct(MLFPlaySetup_t* pSetup);
 void lsg_mlf_init_channel_mapping(MappedMLFChannel_t* ls, int count);
 void lsg_mlf_destroy_channel_mapping(MappedMLFChannel_t* ls, int count);
+int lsg_mlf_is_loop_valid(MLFLoopDesc* pLoop);
 
 int lsg_util_calc_delta_time_scale(const lsg_mlf_t* p_mlf);
 

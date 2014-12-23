@@ -171,6 +171,7 @@ void loadMidi(const MusicPreset& preset) {
     }
     
     sMLFSetup.deltaScale = lsg_util_calc_delta_time_scale(&mlf);
+    sMLFSetup.loopDesc = mlf.loopDesc;
     
     lsg_free_mlf(&mlf);
 }

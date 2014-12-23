@@ -74,7 +74,6 @@ static LSGSample sGeneratorTempBuf[kLSGNumGeneratorSamples];
 static LSGChannel_t sChannelStatuses[kLSGNumOutChannels];
 
 static LSGStatus lsg_initialize_channel(LSGChannel_t* ch);
-static LSGStatus lsg_initialize_custom_note_table();
 static LSGStatus lsg_initialize_channel_command_buffer(LSGChannel_t* ch);
 static LSGStatus lsg_initialize_channel_fir_buffer(LSGChannel_t* ch);
 static LSGStatus lsg_initialize_generators();
@@ -84,6 +83,7 @@ static LSGSample lsg_calc_channel_gain(LSGChannel_t* ch);
 static LSGSample lsg_update_channel_fir(LSGChannel_t* ch, LSGSample newValue);
 static LSGStatus lsg_fill_reserved_commands(int64_t startTick, LSGChannel_t* ch);
 static LSGStatus lsg_apply_generator_filter(int generatorIndex);
+static LSGStatus lsg_apply_channel_system_fade(LSGChannel_t* ch);
 
 LSGStatus lsg_initialize() {
     sGlobalTick = 0;
@@ -96,6 +96,7 @@ LSGStatus lsg_initialize() {
     
     for (int i = 0;i < kLSGNumOutChannels;++i) {
         lsg_initialize_channel(&sChannelStatuses[i]);
+        lsg_channel_initialize_volume_params(i);
         sChannelStatuses[i].selfIndex = i;
     }
     
@@ -120,12 +121,24 @@ LSGStatus lsg_initialize_generators() {
     return LSG_OK;
 }
 
+LSGStatus lsg_channel_initialize_volume_params(int channelIndex) {
+    if (!channel_index_in_range(channelIndex)) {
+        return LSGERR_PARAM_OUTBOUND;
+    }
+    
+    LSGChannel_t* ch = &sChannelStatuses[channelIndex];
+    ch->volume = kLSGChannelVolumeMax;
+    ch->global_volume = kLSGChannelVolumeMax;
+    ch->system_volume = ch->system_vol_dest = kLSGChannelVolumeMax;
+
+    return LSG_OK;
+}
+
 LSGStatus lsg_initialize_channel(LSGChannel_t* ch) {
     ch->fq = ch->bent_fq = 440;
     ch->lastNote = 0;
     ch->global_detune = 0;
-    ch->volume = kLSGChannelVolumeMax;
-    ch->global_volume = kLSGChannelVolumeMax;
+    
 //    ch->fq = 261.625565f;
 //    ch->fq = 293.66476f;
     ch->generatorIndex = 0;
@@ -498,6 +511,32 @@ LSGStatus lsg_set_channel_global_volume(int channelIndex, int v) {
     return LSG_OK;
 }
 
+LSGStatus lsg_set_channel_system_volume(int channelIndex, int vol) {
+    if (channelIndex < 0 || channelIndex >= kLSGNumOutChannels) {
+        return LSGERR_PARAM_OUTBOUND;
+    }
+    
+    if (vol < 0) {vol = 0;}
+    else if (vol > kLSGChannelVolumeMax) { vol = kLSGChannelVolumeMax; }
+    
+    sChannelStatuses[channelIndex].system_volume = vol;
+    
+    return LSG_OK;
+}
+
+LSGStatus lsg_set_channel_auto_fade(int channelIndex, int dest_vol) {
+    if (channelIndex < 0 || channelIndex >= kLSGNumOutChannels) {
+        return LSGERR_PARAM_OUTBOUND;
+    }
+
+    sChannelStatuses[channelIndex].system_vol_dest = dest_vol;
+    return LSG_OK;
+}
+
+LSGStatus lsg_set_channel_auto_fade_max(int channelIndex) {
+    return lsg_set_channel_auto_fade(channelIndex, kLSGChannelVolumeMax);
+}
+
 LSGStatus lsg_fill_generator_buffer(LSGSample* buf, size_t len, LSGSample val) {
     size_t i;
     
@@ -536,6 +575,22 @@ LSGSample lsg_update_channel_fir(LSGChannel_t* ch, LSGSample newValue) {
            (float)buf[5] * 0.0078283f;*/
 }
 
+LSGStatus lsg_apply_channel_system_fade(LSGChannel_t* ch) {
+    if (ch->system_vol_dest == ch->system_volume) {
+        return LSG_OK;
+    }
+    
+    if (ch->system_volume < ch->system_vol_dest) {
+        ch->system_volume += 1;
+        if (ch->system_volume > ch->system_vol_dest) { ch->system_volume = ch->system_vol_dest; }
+    } else {
+        ch->system_volume -= 1;
+        if (ch->system_volume < ch->system_vol_dest) { ch->system_volume = ch->system_vol_dest; }
+    }
+    
+    return LSG_OK;
+}
+
 // ==== OUTPUT API ====
 static LSG_INLINE LSGStatus lsg_synthesize_internal(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo, int bLE) {
     const float baseFQ = (float)kLSGOutSamplingRate / (float)kLSGNumGeneratorSamples;
@@ -562,6 +617,7 @@ static LSG_INLINE LSGStatus lsg_synthesize_internal(unsigned char* pOut, size_t 
 if (cmd & kLSGCommandBit_Enable)
 fprintf(stderr, "Ch: %2d   CMD: %x   t:%8lld\n", ci, cmd, sGlobalTick);
                 lsg_apply_channel_command(ch, cmd, i);
+                lsg_apply_channel_system_fade(ch);
             }
             
             lsg_apply_channel_adsr(ch);
@@ -571,7 +627,7 @@ fprintf(stderr, "Ch: %2d   CMD: %x   t:%8lld\n", ci, cmd, sGlobalTick);
             ch->readPos = (ch->readPos + fstep) % kLSGNumGeneratorSamples;
             const int channelVal = (lsg_calc_channel_gain(ch) * ch->volume * ch->global_volume) / vmax2;
 //            val += lsg_update_channel_fir(ch, channelVal);
-            val += channelVal;
+            val += (channelVal * ch->system_volume) / kLSGChannelVolumeMax;
         }
 
         if (val > 32767) { val = 32767; }
@@ -611,17 +667,36 @@ LSGStatus lsg_fill_reserved_commands(int64_t startTick, LSGChannel_t* ch) {
         return LSG_OK;
     }
     
-    const int64_t endTick = startTick + (kChannelCommandBufferLength * kChannelCommandInterval);
-    
     LSGReservedCommandBuffer_t* rb = ch->pReservedCommandBuffer;
+    const int64_t endTick = startTick + (kChannelCommandBufferLength * kChannelCommandInterval);
+    int64_t tOffset = 0;
+    int64_t tSpanInLoop = rb->loopEndTime - rb->loopStartTime;
+    
+    const int use_loop = (rb->loopLastIndex > rb->loopFirstIndex);
+    const int n_in_loop = (int)(rb->loopLastIndex - rb->loopFirstIndex) + 1;
+    
     for (int i = 0;i < peek_max;++i) {
-        const int rv_index = rb->readPosition;
+        tOffset = 0;
+        int rv_index = rb->readPosition;
+        
+        // Make looped index and time offset
+        if (use_loop) {
+            if (rv_index >= rb->loopFirstIndex) {
+                const int i_from_loopstart = rv_index - (int)rb->loopFirstIndex;
+                const int li = i_from_loopstart % n_in_loop;
+                const int64_t loopCount = i_from_loopstart / n_in_loop;
+                rv_index = (int)rb->loopFirstIndex + li;
+                tOffset = loopCount * tSpanInLoop;
+            }
+        }
+        
         if (rv_index >= rb->writtenLength) {
             break;
         }
-        
+
         const LSGReservedCommand_t* rcmd = &rb->array[rv_index];
-        const int64_t rt = rcmd->tick;
+        const int64_t rt = rcmd->tick + tOffset;
+
         if (rt >= startTick && rt < endTick) {
             const int64_t dt = rt - startTick;
             const int buf_offset = (int)(dt / kChannelCommandInterval);

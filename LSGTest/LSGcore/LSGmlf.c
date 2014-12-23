@@ -17,20 +17,35 @@ static uint32_t read_smf_delta(FILE* fp, int* pOutReadBytes);
 static LSGStatus read_smf_event(FILE* fp, int* pOutReadBytes, MLFEvent_t* pOutEv);
 static LSGStatus read_smf_meta_event(FILE* fp, int metaEventType, int* pOutReadBytes, MLFEvent_t* pOutEv);
 static LSGStatus calc_smf_absolute_time(MLFTrack_t* tr);
+static LSGStatus pick_smf_markers(MLFTrack_t* tr, MLFLoopDesc* outLoopDesc);
 static void smf_event_apply_running_state(MLFEvent_t* newEvent, const MLFEvent_t* prevEvent);
 static void smf_event_apply_drum_mapping(MLFEvent_t* ev);
 static int read_1blen_message(FILE* fp);
+static int read_1blen_message_get_first(FILE* fp, int* outByte);
 
 static size_t read_smf_u32(FILE* fp);
 static size_t read_smf_u16(FILE* fp);
 static size_t read_smf_be(FILE* fp, int nBytes);
 
+LSGStatus lsg_init_mlf_loop(lsg_mlf_t* p_mlf_t) {
+    p_mlf_t->loopDesc.startTicks = 0;
+    p_mlf_t->loopDesc.endTicks = 0;
+    return LSG_OK;
+}
+
+LSGStatus lsg_init_mlf(lsg_mlf_t* p_mlf_t) {
+    p_mlf_t->nTracks = 0;
+    p_mlf_t->tracks_arr = NULL;
+    lsg_init_mlf_loop(p_mlf_t);
+    return LSG_OK;
+}
+
 LSGStatus lsg_load_mlf(lsg_mlf_t* p_mlf_t, const char* filename, int auto_drum_mapping_ch) {
 	FILE* fp;
+	lsg_init_mlf(p_mlf_t);
+    
     p_mlf_t->drum_mapping_channel = auto_drum_mapping_ch;
-	p_mlf_t->nTracks = 0;
 	p_mlf_t->tempo = 120;
-	p_mlf_t->tracks_arr = NULL;
 	
 	fp = fopen(filename, "rb");
 	if (!fp) {
@@ -70,6 +85,8 @@ LSGStatus read_smf_allocate_tracks(lsg_mlf_t* p_mlf_t) {
 
 void lsg_free_mlf(lsg_mlf_t* p_mlf_t) {
 	int n = p_mlf_t->nTracks;
+    if (!p_mlf_t->tracks_arr) { return; }
+
 	for (int i = 0;i < n;++i) {
 		MLFTrack_t* tr = &p_mlf_t->tracks_arr[i];
 		if (tr->events_arr) {
@@ -203,6 +220,10 @@ LSGStatus read_smf_track(FILE* fp, lsg_mlf_t* p_mlf_t, int trackIndex) {
 
 	track_data->nEvents = track_data->nWritten;
 	calc_smf_absolute_time(track_data);
+    
+    if (!lsg_mlf_is_loop_valid(&p_mlf_t->loopDesc)) {
+        pick_smf_markers(track_data, &p_mlf_t->loopDesc);
+    }
     //printf(":::::::::::::::::::: %d %d\n",trackIndex, track_data->nEvents);
 
 	return LSG_OK;
@@ -217,8 +238,60 @@ LSGStatus calc_smf_absolute_time(MLFTrack_t* tr) {
 		
 		ev->absoluteTicks = sum;
 	}
-	
+    
 	return LSG_OK;
+}
+
+LSGStatus pick_smf_markers(MLFTrack_t* tr, MLFLoopDesc* outLoopDesc) {
+    int foundCount = 0;
+	const int n = (int)tr->nEvents;
+    int bPrevIsLoopStart = 0;
+    
+    // Initialize
+    if (outLoopDesc) {
+        outLoopDesc->startTicks = 0;
+        outLoopDesc->endTicks = 0;
+    }
+    
+	for (int i = 0;i < n;++i) {
+		MLFEvent_t* ev = &tr->events_arr[i];
+        if (ev->type == ME_LoopMarker) {
+            ++foundCount;
+            
+            if (foundCount == 1) {
+                // Found first
+                bPrevIsLoopStart = 1;
+            } else if (foundCount == 2) {
+                // Found second
+                if (outLoopDesc) {
+                    // Write
+                    outLoopDesc->endTicks = ev->absoluteTicks;
+                }
+            }
+        } else {
+            if (bPrevIsLoopStart) {
+                bPrevIsLoopStart = 0;
+                if (outLoopDesc) {
+                    // Write
+                    outLoopDesc->startTicks = ev->absoluteTicks;
+                }
+            }
+        }
+    }
+    
+    if (foundCount < 2) {
+        return LSGERR_GENERIC;
+    }
+    
+    if (outLoopDesc) {
+        fprintf(stderr, " :Loop found: %d <-> %d\n", outLoopDesc->startTicks, outLoopDesc->endTicks);
+    }
+    
+	return LSG_OK;
+}
+
+int lsg_mlf_is_loop_valid(MLFLoopDesc* pLoop) {
+    return (pLoop->endTicks > pLoop->startTicks);
 }
 
 LSGStatus mlf_push_event(MLFTrack_t* tr, MLFEvent_t* ev) {
@@ -400,7 +473,12 @@ LSGStatus read_smf_meta_event(FILE* fp, int metaEventType, int* pOutReadBytes, M
             
 		case 0x06: {
 			// marker
-			*pOutReadBytes += read_1blen_message(fp);
+            int body_first_val;
+            const int advance_len = read_1blen_message_get_first(fp, &body_first_val);
+			*pOutReadBytes += advance_len;
+            if (body_first_val == 1 && advance_len == 2) {
+                pOutEv->type = ME_LoopMarker;
+            }
 		} break;
 
 		case 0x20: {
@@ -554,6 +632,7 @@ MLFEvent_t* lsg_mlf_create_sorted_channel_events(lsg_mlf_t* p_mlf_t, int channel
 
 void lsg_mlf_init_play_setup_struct(MLFPlaySetup_t* pSetup) {
     pSetup->deltaScale = 100;
+    pSetup->loopDesc.startTicks = pSetup->loopDesc.endTicks = 0;
     lsg_mlf_init_channel_mapping(pSetup->chmap, kLSGNumOutChannels);
 }
 
@@ -563,6 +642,7 @@ void lsg_mlf_destroy_play_setup_struct(MLFPlaySetup_t* pSetup) {
 
 void lsg_mlf_init_channel_mapping(MappedMLFChannel_t* ls, int count) {
     for (int i = 0;i < count;++i) {
+        ls[i].customNoteTableIndex = 0;
         ls[i].eventsLength = 0;
         ls[i].userData = 0;
         ls[i].sortedEvents = NULL;
@@ -582,13 +662,20 @@ void lsg_mlf_destroy_channel_mapping(MappedMLFChannel_t* ls, int count) {
     }
 }
 
-int read_1blen_message(FILE* fp) {
+int read_1blen_message_get_first(FILE* fp, int* outByte) {
 	int len = fgetc(fp);
 	for (int i = 0;i < len;++i) {
-		fgetc(fp);
+		const int val = fgetc(fp);
+        if (i == 0 && outByte) {
+            *outByte = val;
+        }
 	}
 	
 	return 1 + len;
+}
+
+int read_1blen_message(FILE* fp) {
+    return read_1blen_message_get_first(fp, NULL);
 }
 
 size_t read_smf_u32(FILE* fp) { return read_smf_be(fp, 4); }
