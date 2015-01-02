@@ -646,6 +646,7 @@ void lsg_mlf_init_channel_mapping(MappedMLFChannel_t* ls, int count) {
         ls[i].eventsLength = 0;
         ls[i].userData = 0;
         ls[i].sortedEvents = NULL;
+        ls[i].bEventsArrayIsStatic = 0;
         
         LSG_ADSR* adsr = &ls[i].defaultADSR;
         adsr->attack_rate = adsr->decay_rate = adsr->sustain_level = adsr->release_rate = adsr->fade_rate = 0;
@@ -655,7 +656,10 @@ void lsg_mlf_init_channel_mapping(MappedMLFChannel_t* ls, int count) {
 void lsg_mlf_destroy_channel_mapping(MappedMLFChannel_t* ls, int count) {
     for (int i = 0;i < count;++i) {
         if (ls[i].sortedEvents) {
-            free(ls[i].sortedEvents);
+            if (0 == ls[i].bEventsArrayIsStatic) {
+                free(ls[i].sortedEvents);
+            }
+            
             ls[i].eventsLength = 0;
             ls[i].sortedEvents = NULL;
         }

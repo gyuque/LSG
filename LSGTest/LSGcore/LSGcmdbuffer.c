@@ -100,9 +100,7 @@ LSGStatus lsg_rsvcmd_fill_mlf(LSGReservedCommandBuffer_t* pRCBufArray, int nRCBu
             lsg_set_channel_adsr(ch, &(mappedCh->defaultADSR));
         }
         
-        if (mappedCh->customNoteTableIndex) {
-            lsg_use_custom_notes(ch, mappedCh->customNoteTableIndex);
-        }
+        lsg_use_custom_notes(ch, mappedCh->customNoteTableIndex);
         
         int bLoopStartSet = 0; // Start marker processed?
         for (int i = 0;i < len;++i) {

@@ -146,6 +146,7 @@ typedef struct _MLFEvent_t {
 
 typedef struct _MappedMLFChannel_t {
     MLFEvent_t* sortedEvents;
+    int bEventsArrayIsStatic; // don't free memory
     int customNoteTableIndex;
     int eventsLength;
     int userData;

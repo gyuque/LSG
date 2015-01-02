@@ -7,6 +7,12 @@
 #define generator_index_good(x) (((x) >= 0 && (x) < kLSGNumGenerators) || (x) == kLSGWhiteNoiseGeneratorSpecialIndex)
 #define channel_index_in_range(x) ((x) >= 0 && (x) < kLSGNumOutChannels)
 
+#ifdef __arm__
+#define LSGDEBUG_VERBOSE_COMMAND 0
+#else
+#define LSGDEBUG_VERBOSE_COMMAND 1
+#endif
+
 static const float sNoteTable[12] = {
     32.703196f, // 0  C
     34.647829f, // 1   C+
@@ -614,7 +620,7 @@ static LSG_INLINE LSGStatus lsg_synthesize_internal(unsigned char* pOut, size_t 
             LSGChannel_t* ch = &sChannelStatuses[ci];
             if (should_fetch_command) {
                 const ChannelCommand cmd = lsg_consume_channel_command_buffer(ch);
-if (cmd & kLSGCommandBit_Enable)
+if ((cmd & kLSGCommandBit_Enable) && LSGDEBUG_VERBOSE_COMMAND)
 fprintf(stderr, "Ch: %2d   CMD: %x   t:%8lld\n", ci, cmd, sGlobalTick);
                 lsg_apply_channel_command(ch, cmd, i);
                 lsg_apply_channel_system_fade(ch);
@@ -837,19 +843,19 @@ LSGStatus lsg_generate_sin(int generatorBufferIndex, float a1, float a2, float a
     }
 
     LSGSample* p = sGeneratorBuffers[generatorBufferIndex];
-    const double DPI = M_PI * 2.0;
+    const float DPI = M_PI * 2.0f;
     
     const int seglen = kLSGNumGeneratorSamples;
     for (int i = 0;i < seglen;++i) {
         const float t = (float)i / (float)seglen;
         *p++ = (int)((
-         sin(DPI * t      ) * a1 +
-         sin(DPI * t * 2.0) * a2 +
-         sin(DPI * t * 3.0) * a3 +
-         sin(DPI * t * 4.0) * a4 +
-         sin(DPI * t * 5.0) * a5 +
-         sin(DPI * t * 8.0) * a8 +
-         sin(DPI * t *16.0) * a16) * (double)kGoodMaxVolume);
+         sinf(DPI * t       ) * a1 +
+         sinf(DPI * t * 2.0f) * a2 +
+         sinf(DPI * t * 3.0f) * a3 +
+         sinf(DPI * t * 4.0f) * a4 +
+         sinf(DPI * t * 5.0f) * a5 +
+         sinf(DPI * t * 8.0f) * a8 +
+         sinf(DPI * t *16.0f) * a16) * (double)kGoodMaxVolume);
     }
 
     return LSG_OK;
@@ -861,7 +867,7 @@ LSGStatus lsg_generate_sin_v(int generatorBufferIndex, const float* coefficients
     }
 
     LSGSample* p = sGeneratorBuffers[generatorBufferIndex];
-    const double DPI = M_PI * 2.0;
+    const float DPI = M_PI * 2.0f;
     
     const int seglen = kLSGNumGeneratorSamples;
     for (int i = 0;i < seglen;++i) {
@@ -869,7 +875,7 @@ LSGStatus lsg_generate_sin_v(int generatorBufferIndex, const float* coefficients
         
         float y = 0;
         for (int k = 0;k < count;++k) {
-            y += sin(DPI * t * (float)(k+1)) * coefficients[k];
+            y += sinf(DPI * t * (float)(k+1)) * coefficients[k];
         }
         
         y *= kGoodMaxVolume;
