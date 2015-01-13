@@ -180,10 +180,11 @@ typedef struct _MLFPlaySetup_t {
     MappedMLFChannel_t chmap[kLSGNumOutChannels];
 } MLFPlaySetup_t;
 
-
 // Public APIs
 LSGStatus lsg_initialize();
+LSGStatus lsg_set_buffer_running(char bRunning);
 LSGStatus lsg_channel_initialize_volume_params(int channelIndex);
+LSGStatus lsg_initialize_channel_keyon(int channelIndex);
 LSGStatus lsg_synthesize_BE16(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo);
 LSGStatus lsg_synthesize_LE16(unsigned char* pOut, size_t nSamples, int strideBytes, const int bStereo);
 LSGStatus lsg_set_channel_frequency(int channelIndex, float fq);
@@ -208,6 +209,7 @@ LSGStatus lsg_set_channel_auto_fade(int channelIndex, int dest_vol);
 LSGStatus lsg_set_channel_auto_fade_max(int channelIndex);
 
 int64_t lsg_get_global_tick();
+int lsg_get_semitone_flag(int noteIndex);
 
 LSGStatus lsg_generate_triangle(int generatorBufferIndex);
 LSGStatus lsg_generate_square(int generatorBufferIndex);

@@ -13,6 +13,8 @@
 #define LSGDEBUG_VERBOSE_COMMAND 1
 #endif
 
+static char sLSGBufferRunning = 1;
+
 static const float sNoteTable[12] = {
     32.703196f, // 0  C
     34.647829f, // 1   C+
@@ -28,6 +30,23 @@ static const float sNoteTable[12] = {
     55.0f     , // 9  A
     58.270470f, // 10  A+
     61.735413f  // 11 B
+};
+
+static const int sSemitoneFlagTable[12] = {
+    0, // 0  C
+    1, // 1   C+
+    0, // 2  D
+    1, // 3   D+
+    
+    0, // 4  E
+    0, // 5  F
+    1, // 6   F+
+    0, // 7  G
+    
+    1, // 8   G+
+    0, // 9  A
+    1, // 10  A+
+    0  // 11 B
 };
 
 static const float sFIRTable17[17] = {
@@ -93,6 +112,7 @@ static LSGStatus lsg_apply_channel_system_fade(LSGChannel_t* ch);
 
 LSGStatus lsg_initialize() {
     sGlobalTick = 0;
+    sLSGBufferRunning = 1;
 
     if (lsg_initialize_generators() != LSG_OK) {
         return LSGERR_GENERIC;
@@ -111,6 +131,15 @@ LSGStatus lsg_initialize() {
 
 int64_t lsg_get_global_tick() {
     return sGlobalTick;
+}
+
+LSGStatus lsg_set_buffer_running(char bRunning) {
+    sLSGBufferRunning = bRunning;
+    return LSG_OK;
+}
+
+int lsg_get_semitone_flag(int noteIndex) {
+    return sSemitoneFlagTable[noteIndex % 12];
 }
 
 void lsg_set_force_global_tick(int64_t t) {
@@ -172,6 +201,17 @@ LSGStatus lsg_initialize_channel(LSGChannel_t* ch) {
 
     return LSG_OK;
 }
+
+LSGStatus lsg_initialize_channel_keyon(int channelIndex) {
+    if (!channel_index_in_range(channelIndex)) {
+        return LSGERR_PARAM_OUTBOUND;
+    }
+    
+    sChannelStatuses[channelIndex].currentBaseGain4X = 0;
+    sChannelStatuses[channelIndex].keyonCount = -1;
+    return LSG_OK;
+}
+
 
 LSGStatus lsg_initialize_custom_note_table() {
     for (int i = 0;i < kLSGNoteMappingLength;++i) {
@@ -605,7 +645,7 @@ static LSG_INLINE LSGStatus lsg_synthesize_internal(unsigned char* pOut, size_t 
     
     const int Hi = bLE ? 1 : 0;
     const int Lo = bLE ? 0 : 1;
-
+    
     // Fill (if reserved)
     for (ci = 0;ci < kLSGNumOutChannels;++ci) {
         LSGChannel_t* ch = &sChannelStatuses[ci];
@@ -615,30 +655,35 @@ static LSG_INLINE LSGStatus lsg_synthesize_internal(unsigned char* pOut, size_t 
     const int vmax2 = kLSGChannelVolumeMax * kLSGChannelVolumeMax;
     for (int i = 0;i < nSamples;++i) {
         int val = 0;
-        int should_fetch_command = ((sGlobalTick % (uint64_t)kChannelCommandInterval) == 0);
-        for (ci = 0;ci < kLSGNumOutChannels;++ci) {
-            LSGChannel_t* ch = &sChannelStatuses[ci];
-            if (should_fetch_command) {
-                const ChannelCommand cmd = lsg_consume_channel_command_buffer(ch);
-if ((cmd & kLSGCommandBit_Enable) && LSGDEBUG_VERBOSE_COMMAND)
-fprintf(stderr, "Ch: %2d   CMD: %x   t:%8lld\n", ci, cmd, sGlobalTick);
-                lsg_apply_channel_command(ch, cmd, i);
-                lsg_apply_channel_system_fade(ch);
-            }
-            
-            lsg_apply_channel_adsr(ch);
-            lsg_advance_channel_state(ch);
+        if (sLSGBufferRunning) {
 
-            const int fstep = (ch->bent_fq + ch->global_detune) / baseFQ;
-            ch->readPos = (ch->readPos + fstep) % kLSGNumGeneratorSamples;
-            const int channelVal = (lsg_calc_channel_gain(ch) * ch->volume * ch->global_volume) / vmax2;
-//            val += lsg_update_channel_fir(ch, channelVal);
-            val += (channelVal * ch->system_volume) / kLSGChannelVolumeMax;
+            int should_fetch_command = ((sGlobalTick % (uint64_t)kChannelCommandInterval) == 0);
+            for (ci = 0;ci < kLSGNumOutChannels;++ci) {
+                LSGChannel_t* ch = &sChannelStatuses[ci];
+                if (should_fetch_command) {
+                    const ChannelCommand cmd = lsg_consume_channel_command_buffer(ch);
+    if ((cmd & kLSGCommandBit_Enable) && LSGDEBUG_VERBOSE_COMMAND)
+    fprintf(stderr, "Ch: %2d   CMD: %x   t:%8lld\n", ci, cmd, sGlobalTick);
+                    lsg_apply_channel_command(ch, cmd, i);
+                    lsg_apply_channel_system_fade(ch);
+                }
+                
+                lsg_apply_channel_adsr(ch);
+                lsg_advance_channel_state(ch);
+
+                const int fstep = (ch->bent_fq + ch->global_detune) / baseFQ;
+                ch->readPos = (ch->readPos + fstep) % kLSGNumGeneratorSamples;
+                const int channelVal = (lsg_calc_channel_gain(ch) * ch->volume * ch->global_volume) / vmax2;
+    //            val += lsg_update_channel_fir(ch, channelVal);
+                val += (channelVal * ch->system_volume) / kLSGChannelVolumeMax;
+            }
+
+            if (val > 32767) { val = 32767; }
+            else if (val < -32767) { val = -32767; }
+            
+            ++sGlobalTick;
         }
 
-        if (val > 32767) { val = 32767; }
-        else if (val < -32767) { val = -32767; }
-        
         // Write   - - - - - - - - - - - - - - -
         pOut[writePos+Hi] = (val & 0xff00) >> 8;
         pOut[writePos+Lo] =  val & 0xff;
@@ -648,8 +693,6 @@ fprintf(stderr, "Ch: %2d   CMD: %x   t:%8lld\n", ci, cmd, sGlobalTick);
         }
         
         writePos += strideBytes;
-        
-        ++sGlobalTick;
     }
     
     return LSG_OK;
