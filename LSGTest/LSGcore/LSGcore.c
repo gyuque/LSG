@@ -345,6 +345,20 @@ LSGStatus lsg_set_channel_command_exec_callback(int channelIndex, lsg_channel_co
     return LSG_OK;
 }
 
+LSGStatus lsg_put_channel_command(int channelIndex, int offset, ChannelCommand cmd) {
+    if (channelIndex < 0 || channelIndex >= kLSGNumOutChannels) {
+        return LSGERR_PARAM_OUTBOUND;
+    }
+    
+    LSGChannel_t* ch = &sChannelStatuses[channelIndex];
+    ChannelCommand* buf = ch->commandRingBuffer;
+    
+    const int bufPos = (ch->ringHeadPos + offset) % kChannelCommandBufferLength;
+    buf[bufPos] = cmd;
+    
+    return LSG_OK;
+}
+
 LSGStatus lsg_put_channel_command_and_clear_later_internal(LSGChannel_t* ch, int offset, ChannelCommand cmd) {
     ChannelCommand* buf = ch->commandRingBuffer;
     const int filllen = kChannelCommandBufferLength - offset;

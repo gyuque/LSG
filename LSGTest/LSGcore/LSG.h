@@ -221,6 +221,7 @@ LSGStatus lsg_generate_sin_v(int generatorBufferIndex, const float* coefficients
 LSGStatus lsg_generate_mixed(int generatorBufferIndex, int sourceGeneratorIndex1, int sourceGeneratorIndex2);
 ChannelCommand lsg_consume_channel_command_buffer(LSGChannel_t* ch);
 
+LSGStatus lsg_put_channel_command(int channelIndex, int offset, ChannelCommand cmd);
 LSGStatus lsg_put_channel_command_and_clear_later(int channelIndex, int offset, ChannelCommand cmd);
 
  // reserved commdnd API
