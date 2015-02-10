@@ -147,7 +147,7 @@ LSGStatus read_smf_all_tracks(FILE* fp, lsg_mlf_t* p_mlf_t) {
 
 static LSGStatus allocate_mlf_track_events(MLFTrack_t* tr) {
 	const size_t newSize = (tr->nCurrentCapacity == 0) ? kInitialTrackCapacity : (tr->nCurrentCapacity * 2);
-	tr->events_arr = realloc(tr->events_arr, sizeof(MLFEvent_t) * newSize);
+	tr->events_arr = (MLFEvent_t*)realloc(tr->events_arr, sizeof(MLFEvent_t) * newSize);
 	tr->nCurrentCapacity = (int)newSize;
 	return LSG_OK;
 }
@@ -604,7 +604,7 @@ MLFEvent_t* lsg_mlf_create_sorted_channel_events(lsg_mlf_t* p_mlf_t, int channel
 	
 	const int len = lsg_mlf_count_channel_events(p_mlf_t, channelIndex);
 
-	sorted_buf = malloc( sizeof(MLFEvent_t) * len );
+	sorted_buf = (MLFEvent_t*)malloc( sizeof(MLFEvent_t) * len );
 	int writePos = 0;
 
 	const int nTracks = p_mlf_t->nTracks;
