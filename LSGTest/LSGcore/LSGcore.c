@@ -7,7 +7,7 @@
 #define generator_index_good(x) (((x) >= 0 && (x) < kLSGNumGenerators) || (x) == kLSGWhiteNoiseGeneratorSpecialIndex)
 #define channel_index_in_range(x) ((x) >= 0 && (x) < kLSGNumOutChannels)
 
-#ifdef __arm__
+#if defined(__arm64__) || defined(__arm__)
 #define LSGDEBUG_VERBOSE_COMMAND 0
 #else
 #define LSGDEBUG_VERBOSE_COMMAND 1
