@@ -1,0 +1,95 @@
+input: "rb-title.mid"
+
+custom_notes:
+  36: 0.2
+  38: 0.8
+  41: 0.25
+  45: 0.3
+  48: 0.5
+  other: 440.0
+
+mapping:
+  ch0:
+    generator: [0.5, 0.5, 2, 0.5, 0.5, 0.3, 0.1, 0.2]
+    midi_ch: 0
+    volume: 0.4
+    adsr:
+      attack:  10000
+      decay:     100
+      sustain: 99000
+      release:  1000
+      fade:        0
+
+  ch1:
+    generator: "square13"
+    midi_ch: 1
+    volume: 0.9
+    detune: 1
+    adsr:
+      attack:   1000
+      decay:      26
+      sustain: 20000
+      release:    20
+      fade:        0
+
+  ch2:
+    generator: "square"
+    midi_ch: 2
+    volume: 1
+    detune: 0
+    adsr:
+      attack:   1000
+      decay:      30
+      sustain: 35000
+      release:    10
+      fade:        0
+
+  ch3:
+    generator: "square"
+    midi_ch: 3
+    volume: 1
+    detune: 0
+    adsr:
+      attack:   1000
+      decay:      30
+      sustain: 35000
+      release:    10
+      fade:        0
+
+  ch4:
+    generator: "square"
+    midi_ch: 4
+    volume: 1
+    detune: 0
+    adsr:
+      attack:   1000
+      decay:      30
+      sustain: 35000
+      release:    10
+      fade:        0
+
+  ch5:
+    midi_ch: 5
+    generator: "square13"
+    volume: 0.18
+    detune: -3
+    adsr:
+      attack:   1000
+      decay:      26
+      sustain: 30000
+      release:    20
+      fade:        0
+
+  ch6:
+    generator: "noise"
+    midi_ch: 9
+    use_custom_notes: yes
+    volume: 1
+    adsr:
+      attack:   2000
+      decay:      27
+      sustain: 10000
+      release:     4
+      fade:        2
+
+

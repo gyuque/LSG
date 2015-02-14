@@ -2,8 +2,8 @@ CFLAGS= -I/usr/include/SDL/
 CFLAGS2= $(CFLAGS) -std=gnu99
 LDFLAGS= -lyaml -lSDL -lm
 
-lsg-test: LSGcore.o LSGmlf.o LSGcmdbuffer.o
-	g++ $(CFLAGS) $(LDFLAGS) -o lsg-test ./LSGSDLtest/LSGSDLtest/main.cpp \
+build/linux/lsg-test: LSGcore.o LSGmlf.o LSGcmdbuffer.o
+	g++ $(CFLAGS) $(LDFLAGS) -o build/linux/lsg-test ./LSGSDLtest/LSGSDLtest/main.cpp \
 	                          ./LSGSDLtest/LSGSDLtest/MusicPreset.cpp \
 	                          ./LSGTest/LSGcore/LSGsdl.c \
 	                          LSGcore.o LSGmlf.o LSGcmdbuffer.o
