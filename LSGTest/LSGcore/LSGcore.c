@@ -13,6 +13,10 @@
 #define LSGDEBUG_VERBOSE_COMMAND 1
 #endif
 
+#define kLSGNumInternalPregeneratedWaves 2
+#define kLSGPregeneratedIndexForSquare   0
+#define kLSGPregeneratedIndexForSquare13 1
+
 static char sLSGBufferRunning = 1;
 
 static const float sNoteTable[12] = {
@@ -98,16 +102,23 @@ static LSGSample sGeneratorBuffers[kLSGNumGenerators][kLSGNumGeneratorSamples];
 static LSGSample sGeneratorTempBuf[kLSGNumGeneratorSamples];
 static LSGChannel_t sChannelStatuses[kLSGNumOutChannels];
 
+static LSGSample sPregeneratedBuffers[kLSGNumInternalPregeneratedWaves][kLSGNumGeneratorSamples];
+
 static LSGStatus lsg_initialize_channel(LSGChannel_t* ch);
 static LSGStatus lsg_initialize_channel_command_buffer(LSGChannel_t* ch);
 static LSGStatus lsg_initialize_channel_fir_buffer(LSGChannel_t* ch);
 static LSGStatus lsg_initialize_generators();
+static LSGStatus lsg_prepare_pregenerated_buffers();
 static LSGStatus lsg_fill_generator_buffer(LSGSample* buf, size_t len, LSGSample val);
 static LSGStatus lsg_apply_channel_command(LSGChannel_t* ch, ChannelCommand cmd, int commandOffsetPosition);
 static LSGSample lsg_calc_channel_gain(LSGChannel_t* ch);
 static LSGSample lsg_update_channel_fir(LSGChannel_t* ch, LSGSample newValue);
 static LSGStatus lsg_fill_reserved_commands(int64_t startTick, LSGChannel_t* ch);
+static LSGStatus lsg_generate_square_intl(LSGSample* p);
+static LSGStatus lsg_generate_square13_intl(LSGSample* p);
+static LSGStatus lsg_copy_pregenerated_wave(LSGSample* pDest, int pregenIndex);
 static LSGStatus lsg_apply_generator_filter(int generatorIndex);
+static LSGStatus lsg_apply_generator_filter_intl(LSGSample* p);
 static LSGStatus lsg_apply_channel_system_fade(LSGChannel_t* ch);
 
 LSGStatus lsg_initialize() {
@@ -118,6 +129,7 @@ LSGStatus lsg_initialize() {
         return LSGERR_GENERIC;
     }
     
+    lsg_prepare_pregenerated_buffers();
     lsg_initialize_custom_note_table();
     
     for (int i = 0;i < kLSGNumOutChannels;++i) {
@@ -126,6 +138,33 @@ LSGStatus lsg_initialize() {
         sChannelStatuses[i].selfIndex = i;
     }
     
+    return LSG_OK;
+}
+
+LSGStatus lsg_prepare_pregenerated_buffers() {
+    // : : : : PREPARED waves
+    for (int i = 0;i < kLSGNumInternalPregeneratedWaves;++i) {
+        LSGSample* p = &sPregeneratedBuffers[i][0];
+        
+        if (i == kLSGPregeneratedIndexForSquare) {
+            lsg_generate_square_intl(p);
+            lsg_apply_generator_filter_intl(p);
+        } else if (i == kLSGPregeneratedIndexForSquare13) {
+            lsg_generate_square13_intl(p);
+            lsg_apply_generator_filter_intl(p);
+        }
+    }
+    return LSG_OK;
+}
+
+LSGStatus lsg_copy_pregenerated_wave(LSGSample* pDest, int pregenIndex) {
+    if (pregenIndex != kLSGPregeneratedIndexForSquare &&
+        pregenIndex != kLSGPregeneratedIndexForSquare13) {
+        return LSGERR_PARAM_OUTBOUND;
+    }
+    
+    LSGSample* sourcePregenBuf = &sPregeneratedBuffers[pregenIndex][0];
+    memcpy(pDest, sourcePregenBuf, sizeof(LSGSample) * kLSGNumGeneratorSamples);
     return LSG_OK;
 }
 
@@ -641,10 +680,10 @@ LSGStatus lsg_apply_channel_system_fade(LSGChannel_t* ch) {
     }
     
     if (ch->system_volume < ch->system_vol_dest) {
-        ch->system_volume += 1;
+        ch->system_volume += 2;
         if (ch->system_volume > ch->system_vol_dest) { ch->system_volume = ch->system_vol_dest; }
     } else {
-        ch->system_volume -= 1;
+        ch->system_volume -= 2;
         if (ch->system_volume < ch->system_vol_dest) { ch->system_volume = ch->system_vol_dest; }
     }
     
@@ -813,31 +852,47 @@ LSGStatus lsg_generate_square(int generatorBufferIndex) {
         return LSGERR_PARAM_OUTBOUND;
     }
 
+    LSGSample* p = sGeneratorBuffers[generatorBufferIndex];
+    lsg_copy_pregenerated_wave(p, kLSGPregeneratedIndexForSquare);
+    
+    //lsg_generate_square_intl(p);
+    //lsg_apply_generator_filter(generatorBufferIndex);
+    return LSG_OK;
+}
+
+LSGStatus lsg_generate_square_intl(LSGSample* p) {
     const int seglen = kLSGNumGeneratorSamples / 2;
     int pos1 = 0;
     int pos2 = seglen;
-    LSGSample* p = sGeneratorBuffers[generatorBufferIndex];
-
     for (int i = 0;i < seglen;++i) {
         p[pos1++] = kGoodMaxVolume;
         p[pos2++] = -kGoodMaxVolume;
     }
     
-    lsg_apply_generator_filter(generatorBufferIndex);
     return LSG_OK;
 }
+
 
 LSGStatus lsg_generate_square_13(int generatorBufferIndex) {
     if (!(generator_index_in_range( generatorBufferIndex ))) {
         return LSGERR_PARAM_OUTBOUND;
     }
 
+    LSGSample* p = sGeneratorBuffers[generatorBufferIndex];
+    lsg_copy_pregenerated_wave(p, kLSGPregeneratedIndexForSquare13);
+
+    //lsg_generate_square13_intl(p);
+    //lsg_apply_generator_filter(generatorBufferIndex);
+    return LSG_OK;
+}
+
+
+LSGStatus lsg_generate_square13_intl(LSGSample* p) {
     const int seglen = kLSGNumGeneratorSamples / 4;
     int pos1 = 0;
     int pos2 = seglen;
     int pos3 = seglen*2;
     int pos4 = seglen*3;
-    LSGSample* p = sGeneratorBuffers[generatorBufferIndex];
     
     for (int i = 0;i < seglen;++i) {
         p[pos1++] = kGoodMaxVolume;
@@ -846,7 +901,6 @@ LSGStatus lsg_generate_square_13(int generatorBufferIndex) {
         p[pos4++] = -kGoodMaxVolume;
     }
     
-    lsg_apply_generator_filter(generatorBufferIndex);
     return LSG_OK;
 }
 
@@ -979,9 +1033,13 @@ LSGStatus lsg_apply_generator_filter(int generatorIndex) {
         return LSGERR_PARAM_OUTBOUND;
     }
     
+    LSGSample* p = sGeneratorBuffers[generatorIndex];
+    return lsg_apply_generator_filter_intl(p);
+}
+
+LSGStatus lsg_apply_generator_filter_intl(LSGSample* p) {
     const int flen = 63;
     const int buflen = kLSGNumGeneratorSamples;
-    LSGSample* p = sGeneratorBuffers[generatorIndex];
     LSGSample* tmp = sGeneratorTempBuf;
     memcpy(tmp, p, sizeof(LSGSample) * buflen);
     
