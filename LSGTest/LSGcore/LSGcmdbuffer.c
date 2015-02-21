@@ -90,6 +90,7 @@ LSGStatus lsg_rsvcmd_fill_mlf(LSGReservedCommandBuffer_t* pRCBufArray, int nRCBu
         LSGReservedCommandBuffer_t* rb = &pRCBufArray[ch];
         rb->loopFirstIndex = 0;
         rb->loopLastIndex = 0;
+        rb->lastLoopCount = 0;
         rb->loopStartTime = originTime + pPlaySetup->loopDesc.startTicks * pPlaySetup->deltaScale;
         rb->loopEndTime = originTime + pPlaySetup->loopDesc.endTicks * pPlaySetup->deltaScale;
 

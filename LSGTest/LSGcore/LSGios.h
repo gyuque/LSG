@@ -17,6 +17,11 @@ typedef struct LSGIOS_FFT_t {
     float* spectrumBuffer;
 } LSGIOS_FFT_t;
 
+@protocol LSGiOSBufferWatcher
+@required
+- (void) lsgioswatcher_afterAudioBufferFilled:(unsigned char*)pBuffer numOfSamples:(int)nSamples;
+@end
+
 @interface LSGios : NSObject {
     AudioQueueRef _audioQueue;
     AudioQueueBufferRef _audioBufferList[kLSGIOS_NumOfBuffers];
@@ -29,10 +34,15 @@ typedef struct LSGIOS_FFT_t {
     
     LSGIOS_FFT_t fftdat;
     unsigned int mSampRate;
+    AudioStreamBasicDescription mUsedASBD;
 }
 
 @property(nonatomic, assign) BOOL recordGain;
 @property(readonly, nonatomic) unsigned int outputSamplingRate;
+@property(readonly, nonatomic) unsigned int nSampleBits;
+@property(readonly, nonatomic) unsigned int nChannels;
+@property(readonly, nonatomic) AudioStreamBasicDescription asbd;
+@property(assign, nonatomic) id<LSGiOSBufferWatcher> bufferWatcher;
 
 - (id)init;
 - (void)cleanFFTContext;

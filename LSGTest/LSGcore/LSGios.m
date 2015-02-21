@@ -9,6 +9,9 @@ static unsigned int calcLRReversedBits(unsigned int src, int nBits);
 
 @implementation LSGios
 @synthesize recordGain;
+@synthesize nChannels;
+@synthesize nSampleBits;
+@synthesize bufferWatcher;
 
 - (id)init {
     if (self = [super init]) {
@@ -85,6 +88,11 @@ static unsigned int calcLRReversedBits(unsigned int src, int nBits);
     adesc.mBytesPerPacket = adesc.mBytesPerFrame * adesc.mFramesPerPacket;
     adesc.mReserved = 0;
     
+    // Save properties
+    mUsedASBD = adesc;
+    nSampleBits = adesc.mBitsPerChannel;
+    nChannels = adesc.mChannelsPerFrame;
+    
     OSStatus newq_status = AudioQueueNewOutput(&adesc, audioQueueOutputCallbackBridge, (__bridge void*)self, CFRunLoopGetCurrent(), kCFRunLoopCommonModes, 0, &_audioQueue);
     if (newq_status != noErr) {
         return false;
@@ -102,6 +110,10 @@ static unsigned int calcLRReversedBits(unsigned int src, int nBits);
     
     mSampRate = adesc.mSampleRate;
     return true;
+}
+
+- (AudioStreamBasicDescription)asbd {
+    return mUsedASBD;
 }
 
 - (void)start {
@@ -143,6 +155,10 @@ static unsigned int calcLRReversedBits(unsigned int src, int nBits);
     audioBuffer->mAudioDataByteSize = bufsize;
     
     AudioQueueEnqueueBuffer(_audioQueue, audioBuffer, 1, &pac);
+    
+    if (bufferWatcher) {
+        [bufferWatcher lsgioswatcher_afterAudioBufferFilled:pBuf numOfSamples:nSamples];
+    }
 }
 
 - (void)fillGainLog:(unsigned char*)pSamplesBuffer stride:(int)bytesStride count:(int)nSamplesCount{

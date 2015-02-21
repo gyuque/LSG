@@ -68,6 +68,7 @@ typedef struct _LSGReservedCommandBuffer_t {
     size_t length;
     size_t writtenLength;
     int readPosition;
+    int lastLoopCount;
     size_t loopFirstIndex;
     size_t loopLastIndex;
     int64_t loopStartTime;
@@ -232,6 +233,7 @@ LSGStatus lsg_rsvcmd_clear(LSGReservedCommandBuffer_t* pRCBuf);
 LSGStatus lsg_channel_bind_rsvcmd(int channelIndex, LSGReservedCommandBuffer_t* pRCBuf);
 LSGStatus lsg_rsvcmd_from_mml(LSGReservedCommandBuffer_t* pRCBuf, int w_duration, const char* mml, int64_t originTick);
 LSGStatus lsg_rsvcmd_fill_mlf(LSGReservedCommandBuffer_t* pRCBufArray, int nRCBufs, MLFPlaySetup_t* pPlaySetup, int64_t originTime);
+int lsg_rsvcmd_get_channel_loop_count(int channelIndex);
 
 // MLF APIs
 LSGStatus lsg_init_mlf(lsg_mlf_t* p_mlf_t);

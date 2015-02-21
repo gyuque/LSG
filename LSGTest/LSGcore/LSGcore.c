@@ -789,6 +789,10 @@ LSGStatus lsg_fill_reserved_commands(int64_t startTick, LSGChannel_t* ch) {
                 const int64_t loopCount = i_from_loopstart / n_in_loop;
                 rv_index = (int)rb->loopFirstIndex + li;
                 tOffset = loopCount * tSpanInLoop;
+                
+                rb->lastLoopCount = (int)loopCount;
+            } else {
+                rb->lastLoopCount = 0;
             }
         }
         
@@ -1067,3 +1071,14 @@ LSGStatus lsg_channel_bind_rsvcmd(int channelIndex, LSGReservedCommandBuffer_t* 
     return LSG_OK;
 }
 
+int lsg_rsvcmd_get_channel_loop_count(int channelIndex) {
+    if (!channel_index_in_range(channelIndex)) {
+        return 0;
+    }
+    
+    if (sChannelStatuses[channelIndex].pReservedCommandBuffer) {
+        return sChannelStatuses[channelIndex].pReservedCommandBuffer->lastLoopCount;
+    }
+    
+    return 0;
+}
